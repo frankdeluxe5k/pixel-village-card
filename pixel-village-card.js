@@ -8,7 +8,7 @@
  * 16-bit arcade style. Sprites and scenery are rendered once and cached, and
  * the card only animates while it is actually on screen.
  */
-const PV_VERSION = '2.0.0';
+const PV_VERSION = '2.1.0';
 
 const W = 224, H = 126, HORIZON = 60; // simulation units
 const S = 3, RW = W * S, RH = H * S, HZ = HORIZON * S; // render pixels
@@ -30,6 +30,33 @@ const MODES = {
 const DEFAULT_SCHEDULE = {
   wake: 6.5, work: 8.5, lunch: 12, work_after_lunch: 13, dinner: 18, evening: 19.5, sleep: 22.5,
 };
+
+const DEFAULT_FPS = 15;
+
+const isLive = (st) => !!st && st.state !== 'unavailable' && st.state !== 'unknown';
+function autoWeather(states) {
+  const ids = Object.keys(states).filter((k) => k.startsWith('weather.'));
+  return ids.find((k) => isLive(states[k])) || ids[0] || null;
+}
+
+// Clear errors for the editor and HA's error card instead of a village that silently ignores things.
+function validateConfig(config) {
+  if (!config || typeof config !== 'object') throw new Error('Invalid configuration');
+  if (config.triggers !== undefined && !Array.isArray(config.triggers)) throw new Error('triggers must be a list');
+  (config.triggers || []).forEach((t, i) => {
+    const at = `triggers[${i + 1}]`;
+    if (!t || typeof t !== 'object') throw new Error(`${at} must be an object with an entity and a mode`);
+    if (t.entity !== undefined && typeof t.entity !== 'string') throw new Error(`${at}.entity must be an entity id`);
+    if (t.mode !== undefined && t.mode !== 'auto' && !MODES[t.mode]) throw new Error(`${at}.mode "${t.mode}" isn't a mood (use auto or one of: ${Object.keys(MODES).join(', ')})`);
+    if (t.when !== undefined && !REACTION_KINDS.includes(t.when)) throw new Error(`${at}.when "${t.when}" isn't one of: ${REACTION_KINDS.join(', ')}`);
+  });
+  if (config.schedule !== undefined && (typeof config.schedule !== 'object' || Array.isArray(config.schedule))) throw new Error('schedule must be a map of times');
+  for (const [k, v] of Object.entries(config.schedule || {})) {
+    if (!(k in DEFAULT_SCHEDULE)) throw new Error(`schedule.${k} isn't a schedule entry (use: ${Object.keys(DEFAULT_SCHEDULE).join(', ')})`);
+    const h = parseHour(v);
+    if (!(h >= 0 && h < 24)) throw new Error(`schedule.${k} must be a time like "06:30"`);
+  }
+}
 
 const JOBS = ['farmer', 'cook', 'woodcutter', 'carrier', 'bard', 'child', 'farmer', 'woodcutter', 'carrier', 'child'];
 
@@ -104,7 +131,7 @@ PATHS.forEach((p) => { p.line = smoothPath(p.pts); });
 const ENTRANCE = PATHS[0].pts[0];
 
 const FIRE = { x: 92, y: 112 };
-const WELL = { x: 70, y: 83 };
+const WELL = { x: 145, y: 73 };
 const STUMP = { x: 60, y: 122 };
 // Village square furniture, in render pixels.
 const POND = { x: 392, y: 352, rx: 20, ry: 8 };
@@ -132,9 +159,10 @@ const GUEST_SEATS = [[0, -10], [0, 15], [0, 41], [1, 5], [1, 27], [1, 49], [2, -
   return { x: (AMPHI.x + rx * Math.cos(r)) / S, y: (AMPHI.y + rx * AMPHI.squash * Math.sin(r)) / S, face: -1 };
 });
 const STAGE_SPOT = { x: 9.5, y: 114 };
-// The farm, set back behind the well (render pixels).
-const FARM = { x0: 144, x1: 268, y0: 198, y1: 226 };
-const farmSpot = () => ({ x: Math.random() < 0.5 ? rand(50, 62) : rand(78, 87), y: rand(67, 74) });
+// The farm, set back at the back centre (render pixels). It starts right of the blue house so nobody
+// working it is hidden behind that roof.
+const FARM = { x0: 192, x1: 268, y0: 198, y1: 226 };
+const farmSpot = () => ({ x: rand(66, 87), y: rand(67, 74) });
 
 // The café: brick patio, bistro tables, a coffee cart (render pixels).
 const PATIO = { x0: 522, x1: 650, y0: 328 };
@@ -150,9 +178,18 @@ const BARISTA = { x: (CART.x + 28) / S, y: CART.by / S };
 
 // Away: the "back soon!" sign.
 const SIGN = { x: CART.x / S, base: (CART.by - 2) / S };
-// Where the travelling band plays (behind the fire), and extra amphitheater seats for visitors.
-const BAND_SPOTS = [[-15, -12.5], [-6, -13.5], [3, -13.5], [12, -12.5]].map(([dx, dy]) => ({ x: FIRE.x + dx, y: FIRE.y + dy }));
-const INSTRUMENTS = ['drum', 'fiddle', 'accordion', 'horn'];
+// Where the travelling band plays: up in front of the tavern, above the string lights over the square,
+// the drummer a step back in the middle. Same order as INSTRUMENTS.
+const BAND_SPOTS = [{ x: 94.5, y: 84.5, face: 1 }, { x: 86, y: 88.5, face: 1 }, { x: 102, y: 88.5, face: -1 }, { x: 109, y: 88, face: -1 }];
+const INSTRUMENTS = ['drums', 'bass', 'guitar', 'guitar'];
+// The band's look: young garage-rock kids. Guitar body colours by member.
+const BAND_LOOKS = [
+  { hair: '#26222e', style: 'messy', shirt: '#2e2e38', pants: '#3a4a6a', top: 'print', hat: 'bandbeanie' },
+  { hair: '#e8dca8', style: 'swoop', shirt: '#ececf0', pants: '#22222c', top: 'stripes' },
+  { hair: '#26222e', style: 'swoop', shirt: '#b8303a', pants: '#2a2a3a', top: 'flannel', streak: '#e04a5a' },
+  { hair: '#a8381c', style: 'spiky', shirt: '#3a9aa8', pants: '#2a2a3a', top: 'tee' },
+];
+const BAND_GUITARS = ['#2a2a34', '#ece6d4', '#d02a34', '#3a6ad0'];
 
 // Ground footprints villagers shouldn't walk through, and a path network along the road.
 const FOOTPRINTS = [
@@ -280,17 +317,22 @@ function scheduleMode(h, s) {
   return 'evening';
 }
 
+// Home Assistant weather conditions: clear-night, cloudy, exceptional, fog, hail, lightning,
+// lightning-rainy, partlycloudy, pouring, rainy, snowy, snowy-rainy, sunny, windy, windy-variant.
+// Anything else (unknown, unavailable, no entity) reads as clear.
 function readWeather(state) {
   const s = state || '';
   return {
     state: s,
-    rain: /rain|pouring/.test(s),
-    heavy: /pouring|lightning/.test(s),
+    rain: /rain|pouring|hail/.test(s),
+    heavy: /pouring|lightning|hail/.test(s),
+    hail: s === 'hail',
     snow: /snow/.test(s),
     fog: s === 'fog',
     storm: /lightning/.test(s),
-    overcast: /cloudy|rain|pouring|snow|fog|lightning/.test(s) && s !== 'partlycloudy',
-    clouds: s === 'partlycloudy' ? 4 : /cloudy|rain|pouring|snow|lightning/.test(s) ? 7 : 3,
+    wind: /windy/.test(s),
+    overcast: /^cloudy|rain|pouring|hail|snow|fog|lightning|exceptional/.test(s),
+    clouds: s === 'partlycloudy' ? 4 : s === 'windy-variant' ? 6 : /cloudy|rain|pouring|hail|snow|lightning|exceptional/.test(s) ? 7 : 3,
   };
 }
 
@@ -460,19 +502,21 @@ function flipH(cv) {
 
 const SW = 37, SH = 46, AX = 18, FY = 42; // sprite canvas, anchor x, feet row
 
+// Head in 3/4 view facing right: flat crown under the hair, ear on the left, cheek and a defined chin on
+// the right. The face itself (brows, eyes, nose, mouth) is drawn by drawFace from each person's traits.
 const HEAD = [
-  '...HHHHHH...',
-  '..HSSSSSSSS.',
-  '.HSSSSSSSSSS',
-  '.SSSSSSSSSSS',
-  'SSSSSSSkkkSS',
-  'SSSSSSSSweSS',
-  'SsESSSSSeeSS',
-  'SssSHSSSSSSn',
-  '.sSSSSSbbSSs',
-  '.ssSSSSSmmS.',
-  '..ssSSSSSS..',
-  '....ssss....',
+  '..HHHHHHH...',
+  '.HHHSSSSSS..',
+  '.HSSSSSSSSS.',
+  'HSSSSSSSSSSS',
+  'SSSSSSSSSSSS',
+  'SSSSSSSSSSSS',
+  'SESSSSSSSSSS',
+  'sEsSSSSSSSSS',
+  '.ssSSSSSSSSs',
+  '.ssSSSSSSSS.',
+  '..ssSSSSSSs.',
+  '....sssss...',
 ];
 
 const HAIR = {
@@ -503,6 +547,28 @@ const HAIR = {
     'hhk...........',
     'kk............',
   ],
+  swoop: [
+    '...jjjjjj.....',
+    '..jjhhhhhhj...',
+    '.jhhhhhhhhhhh.',
+    'jhhhhhhhhhhhhh',
+    'hhhhhhhhhhhhhk',
+    'hhhhhhhhhhhhk.',
+    'hhhhhkhhhkk...',
+    'hhhk..........',
+    'hhk...........',
+    'hk............',
+  ],
+  spiky: [
+    '..j..j..j.....',
+    '.jj.jj.jjj....',
+    '.jhhjhhjhhjh..',
+    'jhhhhhhhhhhhh.',
+    'hhhhhhhhhhhkhk',
+    'hhhhhkkh..k...',
+    'hhhk..........',
+    'khk...........',
+  ],
   messy: [
     '...j..j.j.....',
     '..jjhjjhjh....',
@@ -517,12 +583,89 @@ const HAIR = {
 
 const BEARD = [
   '..h.........',
-  '..hh.....hh.',
-  '..hhhhhhhhhk',
+  '..hh..hhhhh.',
+  '..hhhh..hhhk',
   '...hhhhhhhk.',
   '....khhhhk..',
   '......kk....',
 ];
+
+// Skin gets its own gentle ramp: the general hue-shifted ramp pushes light skin into orange and red.
+const skinCache = new Map();
+function skinRamp(hex) {
+  let r = skinCache.get(hex);
+  if (!r) skinCache.set(hex, (r = { o: mixHex(hex, '#3a1a1e', 0.55), d: mixHex(hex, '#7a3a34', 0.28), m: hex, l: mixHex(hex, '#fff2e0', 0.3), h: mixHex(hex, '#ffffff', 0.55) }));
+  return r;
+}
+
+// Each person's face: stable traits picked from their seed, so everyone keeps the same face.
+const IRIS = ['#5a3a24', '#3a6ab8', '#3a8a5a', '#7a5a2a', '#3a3044'];
+function faceOf(v) {
+  const L = v.look;
+  if (L.faceT) return L.faceT;
+  const r = mulberry32(Math.floor((v.seed || 0) * 1e6) + v.id * 131 + 7), pick = (a) => a[Math.floor(r() * a.length)];
+  const kid = v.small;
+  return (L.faceT = {
+    eye: pick(kid ? ['round', 'round', 'lash'] : ['round', 'round', 'lash', 'narrow']),
+    iris: pick(IRIS),
+    brow: pick(kid ? ['flat', 'arch', 'soft'] : ['flat', 'arch', 'thick', 'soft', 'worried', 'bold']),
+    mouth: pick(kid ? ['smile', 'grin', 'open'] : ['smile', 'smile', 'flat', 'smirk', 'grin']),
+    nose: pick(['button', 'button', 'long', 'round']),
+    blush: kid || r() < 0.3,
+    freckles: r() < (kid ? 0.45 : 0.15),
+    glasses: !kid && !L.beard && r() < 0.15,
+    stache: !L.beard && !kid && r() < 0.12,
+  });
+}
+// Brows as [col, row] pixels in head space: near eye then far eye.
+const BROWS = {
+  flat: [[4, 4], [5, 4], [6, 4], [9, 4], [10, 4]],
+  arch: [[4, 4], [5, 3], [6, 4], [9, 3], [10, 4]],
+  thick: [[4, 4], [5, 4], [6, 4], [5, 3], [6, 3], [9, 4], [10, 4], [9, 3]],
+  soft: [[5, 4], [6, 4], [9, 4]],
+  worried: [[4, 4], [5, 4], [6, 3], [9, 3], [10, 4]],
+  bold: [[4, 3], [5, 4], [6, 4], [9, 4], [10, 3]],
+};
+
+// Head, face, beard, hair and hat. Returns the eye boxes for blinking.
+function drawHead(g, v, hy, skin, hair) {
+  const L = v.look, F = faceOf(v), X = AX - 5;
+  const Q = (c, r, col, w = 1, h = 1) => P(g, X + c, hy + r, w, h, col);
+  tpl(g, HEAD, X, hy, { S: skin.m, s: skin.d, H: skin.l, E: skin.o });
+  Q(2, 6, skin.d); Q(1, 5, skin.m);
+  for (const [c, r] of BROWS[F.brow]) Q(c, r, F.brow === 'soft' ? hair.m : hair.d);
+  // eyes: white on the outer side, pupil looking ahead with the iris colour under the lid
+  for (const ex of [5, 9]) {
+    if (F.eye === 'narrow') { Q(ex, 5, OUT, 2, 1); Q(ex, 6, '#f8f4ee'); Q(ex + 1, 6, F.iris); }
+    else { Q(ex, 5, '#f8f4ee', 1, 2); Q(ex + 1, 5, OUT); Q(ex + 1, 6, F.iris); }
+  }
+  if (F.eye === 'lash') { Q(4, 5, OUT); Q(5, 4, OUT); Q(11, 5, OUT); }
+  // nose between the eyes, lit from the upper left
+  const lip = mixHex(skin.o, '#8a3a3a', 0.25), nose = mixHex(skin.d, skin.o, 0.35), dark = '#4a1e22';
+  if (F.nose === 'long') { Q(8, 5, skin.l, 1, 2); Q(8, 7, nose); Q(9, 7, skin.d); }
+  else if (F.nose === 'round') { Q(8, 6, skin.l); Q(7, 7, skin.d); Q(8, 7, nose); }
+  else { Q(8, 6, skin.l); Q(8, 7, nose); }
+  if (F.blush) { const b = mixHex(skin.m, '#e86a70', 0.22); Q(4, 8, b); Q(10, 8, b); }
+  if (F.freckles) for (const [c, r] of [[3, 7], [5, 8], [10, 7]]) Q(c, r, skin.d);
+  switch (F.mouth) {
+    case 'smile': Q(7, 9, lip, 2); Q(6, 8, skin.d); Q(9, 8, skin.d); break;
+    case 'grin': Q(6, 9, lip); Q(7, 9, '#fffaf0', 2); Q(9, 9, lip); Q(7, 10, dark, 2); break;
+    case 'open': Q(7, 9, dark, 2); Q(7, 10, mixHex(dark, '#e07070', 0.6), 2); break;
+    case 'smirk': Q(7, 9, lip, 2); Q(9, 8, lip); break;
+    default: Q(7, 9, lip, 2);
+  }
+  Q(6, 10, skin.l, 2); // chin light
+  if (L.beard) tpl(g, BEARD, X, hy + 7, { h: hair.m, k: hair.d });
+  else if (F.stache) { Q(6, 8, hair.m, 4); Q(6, 8, hair.d); Q(9, 8, hair.d); }
+  tpl(g, HAIR[L.style], X - 1, hy - 2, { h: hair.m, k: hair.d, j: L.streak || hair.l });
+  if (F.glasses) {
+    const [r, gg, b] = hexToRgb(L.skin), fr = r * 0.3 + gg * 0.6 + b * 0.1 < 140 ? '#e0d4b8' : '#3a2a24';
+    Q(4, 5, fr, 1, 2); Q(5, 7, fr, 2); Q(7, 5, fr, 1, 2); Q(8, 5, fr); Q(9, 7, fr, 2); Q(11, 5, fr, 1, 2); Q(2, 5, fr, 2);
+  }
+  const hat = HATS[v.hat || v.job];
+  if (hat) tpl(g, hat.rows, X + hat.ox, hy + hat.oy, hat.map);
+  return [[X + 5, hy + 5], [X + 9, hy + 5]];
+}
 
 const HATS = {
   farmer: {
@@ -622,10 +765,11 @@ const KEYS = {
   water: [{ f: [6, 1], b: [4, 2] }, { f: [6, 0], b: [4, 1] }],
   handheld: [{ f: [4, 0], b: [3, 1] }, { f: [4, 1], b: [3, 1] }, { f: [4, 0], b: [3, 0] }],
   controller: [{ f: [3, 2], b: [2, 3] }, { f: [4, 2], b: [2, 2] }, { f: [3, 1], b: [2, 3] }],
-  band_drum: [{ f: [4, -2], b: [0, 4] }, { f: [5, 2], b: [0, 4] }],
-  band_fiddle: [{ f: [5, 1], b: [6, -5] }, { f: [2, 2], b: [6, -5] }, { f: [-1, 3], b: [6, -5] }, { f: [2, 2], b: [6, -5] }],
-  band_accordion: [{ f: [5, 4], b: [-3, 4] }, { f: [7, 4], b: [-4, 4] }, { f: [8, 4], b: [-5, 4] }, { f: [7, 4], b: [-4, 4] }],
-  band_horn: [{ f: [5, -4], b: [4, -3] }, { f: [5, -5], b: [4, -4], bob: -1 }],
+  // sticks: snare hit, other hand down on the tom, crash
+  band_drums: [{ f: [3, 3], b: [8, -5] }, { f: [2, -5], b: [10, 2] }, { f: [9, -4], b: [8, -5] }],
+  // fretting hand on the neck, strumming hand at the body; down-strums dip the body
+  band_bass: [{ f: [-1, 3], b: [14, -2] }, { f: [0, 4], b: [14, -2], bob: 1 }, { f: [-1, 3], b: [13, -2] }, { f: [0, 4], b: [13, -2], bob: 1 }],
+  band_guitar: [{ f: [0, 2], b: [13, -2] }, { f: [1, 4], b: [13, -2], bob: 1 }, { f: [0, 3], b: [12, -2] }, { f: [1, 5], b: [12, -2], bob: 1 }],
 };
 // pose -> [keyframe set, frames per second, playback order]
 const ANIM = {
@@ -644,8 +788,8 @@ const ANIM = {
   serve: ['serve', 2.5, [0, 1, 2, 3]], water: ['water', 4, [0, 1]],
   ride: [null, 8, [0, 1, 2, 3]],
   handheld: ['handheld', 3, [0, 1, 0, 2, 1, 0]], controller: ['controller', 7, [0, 1, 2, 1]],
-  band_drum: ['band_drum', 4, [0, 1]], band_fiddle: ['band_fiddle', 6, [0, 1, 2, 3]],
-  band_accordion: ['band_accordion', 4, [0, 1, 2, 3]], band_horn: ['band_horn', 3, [0, 1]],
+  band_drums: ['band_drums', 7, [0, 1, 0, 1, 0, 1, 2, 1]], band_bass: ['band_bass', 4, [0, 1, 2, 3]],
+  band_guitar: ['band_guitar', 7, [0, 1, 2, 3]],
 };
 const LIFT = { dance: [0, 2, 3, 2], kidplay: [0, 2, 3, 2] };
 
@@ -668,7 +812,7 @@ function drawHafted(g, kind, [hx, hy], [dx, dy]) {
 
 Object.assign(HATS, {
   mail: { ox: -1, oy: -3, map: { B: '#3a5a9a', b: '#22325a', Y: '#f0c040' }, rows: ['...BBBBBB.....', '..BBBBBBBB....', '.BBBBBYBBBB...', '.bbbbbbbbbbbbb'] },
-  band: { ox: -2, oy: -4, map: { K: '#e8c870', k: '#b89848', R: '#c03a3a' }, rows: ['....KKKKKKKK....', '....RRRRRRRR....', 'kkkkkkkkkkkkkkkk'] },
+  bandbeanie: { ox: -1, oy: -3, map: { R: '#2e2e38', r: '#1a1a22', Q: '#4a4a58' }, rows: HATS.woodcutter.rows },
   sunhat: {
     ox: -3, oy: -4, map: { P: '#f4e4c0', p: '#c8b48a', F: '#e06a8a' },
     rows: ['......PPPPP.......', '.....PPPPPPP......', '....FFFFFFFFF.....', 'PPPPPPPPPPPPPPPPPP', '.pppppppppppppppp.'],
@@ -677,7 +821,7 @@ Object.assign(HATS, {
   cap: { ox: -1, oy: -3, map: { C: '#3a9a5a', c: '#246a3e' }, rows: ['...CCCCCC.....', '..CCCCCCCC....', '.CCCCCCCCCC...', '.ccccccccccccc'] },
 });
 
-const SIT_POSES = new Set(['sit', 'eat', 'watch', 'lutesit', 'laptop', 'sip', 'handheld', 'controller']);
+const SIT_POSES = new Set(['sit', 'eat', 'watch', 'lutesit', 'laptop', 'sip', 'handheld', 'controller', 'band_drums']);
 const SHOE = ramp('#4a3022');
 const WOOD = ramp('#8a5a30');
 const METAL = ramp('#9aa2b0');
@@ -701,13 +845,13 @@ function limb(g, [x0, y0], [x1, y1], sl, sk, outlined) {
   P(g, x1 + 1, y1 + 1, 1, 1, sk.d);
 }
 
-function drawLegs(g, o, sit, child, legLen, pants, skin) {
+function drawLegs(g, o, sit, child, legLen, pants, skin, sole = SHOE.d) {
   if (sit) {
     const ty = FY - 4;
     P(g, AX - 3, ty - 1, 8, 2, pants.d);
     P(g, AX - 2, ty, 9, 2, pants.m); P(g, AX - 2, ty, 9, 1, pants.l);
     P(g, AX + 4, ty + 1, 3, 2, child ? skin.m : pants.m);
-    P(g, AX + 4, FY - 1, 5, 2, SHOE.m); P(g, AX + 4, FY, 5, 1, SHOE.d); P(g, AX + 7, FY - 1, 1, 1, SHOE.l);
+    P(g, AX + 4, FY - 1, 5, 2, SHOE.m); P(g, AX + 4, FY, 5, 1, sole); P(g, AX + 7, FY - 1, 1, 1, SHOE.l);
     return;
   }
   const top = FY - legLen + 1;
@@ -719,7 +863,7 @@ function drawLegs(g, o, sit, child, legLen, pants, skin) {
     if (!child && rows > 2) P(g, x, top + 2, 1, 1, pants.o);
     P(g, x - 1, FY - 1 - lift, 4, 2, SHOE.m);
     P(g, x, FY - 1 - lift, 1, 1, SHOE.h);
-    P(g, x - 1, FY - lift, 4, 1, SHOE.d);
+    P(g, x - 1, FY - lift, 4, 1, sole);
     P(g, x + 1, FY - 1 - lift, 2, 1, SHOE.l);
   };
   leg(AX - 2, o[0], o[1], pants.d, null);
@@ -780,11 +924,20 @@ function drawTorso(g, v, tt, tb, shirt, pants, skin) {
       belt = false;
       break;
     }
-    case 'band':
-      P(g, x0, tt, 2, 1, '#e8c050'); P(g, x0 + 7, tt, 2, 1, '#e8c050');
-      for (let r = tt + 2; r < tb - 1; r += 2) P(g, x0 + 4, r, 1, 1, '#e8c050');
-      P(g, x0 + 3, tt, 3, 2, '#ffffff');
+    case 'band': {
+      const top = v.look.top, tee = '#2e2e38';
+      if (top === 'stripes') for (let r = 1; r < h - 1; r += 2) P(g, x0, tt + r, w, 1, r === 1 ? '#3a3a46' : '#24242c');
+      if (top === 'flannel') {
+        for (let r = 0; r < h - 1; r++) for (let c = 0; c < w; c++) if ((c + 1) % 3 === 0 || (r + 1) % 3 === 0) P(g, x0 + c, tt + r, 1, 1, mixHex(shirt.d, '#1a1010', 0.5));
+        P(g, x0 + 3, tt, 3, h - 1, tee); P(g, x0 + 3, tt, 1, h - 1, '#44444f');
+      }
+      if (top === 'print') { P(g, x0 + 3, tt + 2, 3, 2, '#e8e8e8'); P(g, x0 + 3, tt + 4, 1, 1, '#e8e8e8'); P(g, x0 + 5, tt + 4, 1, 1, '#e8e8e8'); P(g, x0 + 4, tt + 3, 1, 1, tee); }
+      if (top === 'tee') { P(g, x0 + 2, tt + 3, 5, 2, '#f0e050'); P(g, x0 + 3, tt + 3, 1, 1, '#2a2a30'); P(g, x0 + 5, tt + 4, 1, 1, '#2a2a30'); }
+      P(g, x0, tb - 1, w, 1, '#1a1a20');
+      for (let c = 1; c < w; c += 2) P(g, x0 + c, tb - 1, 1, 1, '#c8ccd8');
+      belt = false;
       break;
+    }
     case 'mail':
       P(g, x0 + 6, tt + 2, 2, 2, '#e8c050'); P(g, x0 + 3, tt, 3, 1, '#ffffff');
       break;
@@ -901,7 +1054,7 @@ function buildVillager(v, pose, frame, carry, gear) {
   if (pose === 'ride') return buildRider(v, frame, carry);
   const c = mk(SW, SH), g = c.getContext('2d');
   const L = v.look;
-  const skin = ramp(L.skin), hair = ramp(L.hair), shirt = ramp(L.shirt), pants = ramp(L.pants);
+  const skin = skinRamp(L.skin), hair = ramp(L.hair), shirt = ramp(L.shirt), pants = ramp(L.pants);
   const child = v.small, legLen = child ? 4 : 6, torsoH = child ? 7 : 9;
   const sit = SIT_POSES.has(pose);
   let back = child ? [-1, 5] : [-1, 6], front = child ? [1, 5] : [1, 6], tool = null, bob = 0, dir = null;
@@ -936,10 +1089,7 @@ function buildVillager(v, pose, frame, carry, gear) {
     case 'serve': tool = frame === 1 || frame === 2 ? null : 'mug'; break;
     case 'handheld': tool = 'handheld' + (v.id % 2); break;
     case 'controller': tool = 'pad'; break;
-    case 'band_drum': tool = 'drum'; break;
-    case 'band_fiddle': tool = 'fiddle'; break;
-    case 'band_accordion': tool = 'accordion'; break;
-    case 'band_horn': tool = 'horn'; break;
+    case 'band_drums': case 'band_bass': case 'band_guitar': tool = pose.slice(5); break;
   }
   if (carry === 'log') { back = [-1, -3]; front = [2, -3]; }
   else if (carry === 'bucket' && pose !== 'water') { front = [1, 6]; tool = 'bucket'; }
@@ -952,22 +1102,18 @@ function buildVillager(v, pose, frame, carry, gear) {
 
   if (gear) drawPack(g, tt);
   limb(g, sb, hb, { m: shirt.d, l: shirt.m }, { m: skin.d, l: skin.m, d: skin.o }, false);
-  drawLegs(g, legs, sit, child, legLen, pants, skin);
+  drawLegs(g, legs, sit, child, legLen, pants, skin, v.job === 'band' ? '#f0f0f0' : SHOE.d);
   if (!sit && tb < FY - legLen) P(g, AX - 4, tb + 1, 9, FY - legLen - tb, pants.m);
   drawTorso(g, v, tt, tb, shirt, pants, skin);
   if (v.job === 'carrier') drawSkirt(g, tb, pants, sit);
 
-  tpl(g, HEAD, AX - 5, hy, { S: skin.m, s: skin.d, H: skin.l, E: skin.o, n: skin.d, w: '#ffffff', e: OUT, b: '#e8907c', m: skin.o, k: hair.d });
-  if (L.beard) tpl(g, BEARD, AX - 5, hy + 7, { h: hair.m, k: hair.d });
-  tpl(g, HAIR[L.style], AX - 6, hy - 2, { h: hair.m, k: hair.d, j: hair.l });
-  const hat = HATS[v.hat || v.job];
-  if (hat) tpl(g, hat.rows, AX - 5 + hat.ox, hy + hat.oy, hat.map);
+  const eyes = drawHead(g, v, hy, skin, hair);
   if (v.job === 'mail') { line(g, AX + 2, tt, AX - 3, tb - 3, '#5a3a20', 1); P(g, AX - 7, tb - 4, 5, 4, '#8a5a30'); P(g, AX - 7, tb - 4, 5, 1, '#a87a48'); }
   if (gear) line(g, AX - 3, tt + 1, AX + 1, tt + 5, '#4a2a18', 1);
 
   limb(g, sf, hf, shirt, skin, true);
   if (tool === 'hoe' || tool === 'axe' || tool === 'hammer') drawHafted(g, tool, hf, dir || [0.8, 0.6]);
-  else if (INSTRUMENTS.includes(tool)) drawInstrument(g, tool, hf, hb, frame, tt, hy);
+  else if (INSTRUMENTS.includes(tool)) drawInstrument(g, v, tool, hf, hb, tt, skin);
   else if (tool) drawTool(g, tool, hf[0], hf[1], frame, tt, tb);
   if (carry && carry !== 'bucket') drawCarry(g, carry, hf[0], hf[1], tt);
   if (stick) {
@@ -978,7 +1124,7 @@ function buildVillager(v, pose, frame, carry, gear) {
     P(g, hf[0] - 1, hf[1] - 1, 3, 3, skin.m); P(g, hf[0] - 1, hf[1] - 1, 1, 1, skin.l);
   }
   outline(c);
-  return { cv: c, eyeX: AX + 3, eyeY: hy + 5, top: hy - 6 };
+  return { cv: c, eyes, top: hy - 6 };
 }
 
 /* ---------- animals ---------- */
@@ -1078,7 +1224,7 @@ function animalSprite(type, variant, pose, frame) {
 
 // Lounging spots for the cat, and places for wildlife (simulation units).
 const CAT_SPOTS = [[86, 104], [74, 120], [110, 121], [188, 117], [70, 84], [130, 84], [60, 102], [204, 110]];
-const RABBIT_ZONES = [[134, 64, 166, 75], [112, 117, 122, 125], [2, 96, 14, 101]];
+const RABBIT_ZONES = [[152, 64, 168, 75], [112, 117, 122, 125], [2, 96, 14, 101]];
 const TREE_BASES = [[40, 72], [134, 70], [160, 70], [88, 64], [221, 106]];
 // Where birds may land. Ground spots are in the open village; roof spots sit on a ridge and are drawn
 // just in front of that house (y is the house's ground line, alt lifts the bird up to the ridge).
@@ -1090,7 +1236,7 @@ function birdSpot() {
   }
   const ground = [
     () => [FIRE.x + rand(-22, 22), FIRE.y + rand(-6, 9)],
-    () => [rand(52, 62), rand(68, 74)], () => [rand(78, 87), rand(68, 74)],
+    () => [rand(66, 87), rand(68, 74)],
     () => [rand(140, 166), rand(108, 124)],
     () => [rand(176, 214), rand(110, 125)],
   ];
@@ -1102,25 +1248,34 @@ function birdSpot() {
   return { x: FIRE.x, y: FIRE.y + 8, alt: 0 };
 }
 
-// Instruments for the travelling band.
-function drawInstrument(g, kind, hf, hb, frame, tt, hy) {
-  const [hx, hyy] = hf;
-  if (kind === 'drum') {
-    P(g, AX - 3, tt, 1, 4, '#5a3a20'); P(g, AX + 3, tt, 1, 4, '#5a3a20');
-    disc(g, AX + 2, tt + 6, 5, '#c83a3a'); disc(g, AX + 2, tt + 6, 4, '#f0e8d8'); P(g, AX - 3, tt + 6, 11, 1, '#e8c050');
-    line(g, hx, hyy, hx + 2, hyy - 3, '#8a5a30', 1); P(g, hx + 2, hyy - 5, 2, 2, '#f0f0f0');
-  } else if (kind === 'fiddle') {
-    ellipse(g, AX + 5, tt, 3, 2, '#a85a28'); P(g, AX + 4, tt, 2, 1, '#3a2010');
-    line(g, AX + 7, tt - 1, hb[0], hb[1], '#5a3418', 1);
-    const bx = hx - 1, by = hyy + 1;
-    line(g, bx - 4, by + 2, bx + 5, by - 3, '#e8dcc0', 1);
-  } else if (kind === 'accordion') {
-    const x0 = Math.min(hb[0], hf[0]) + 1, x1 = Math.max(hb[0], hf[0]) - 1;
-    for (let x = x0; x <= x1; x++) P(g, x, tt + 3, 1, 6, x % 2 ? '#c83a3a' : '#2a2a30');
-    P(g, x0 - 1, tt + 2, 2, 8, '#e8e0d0'); P(g, x1, tt + 2, 2, 8, '#e8e0d0');
-  } else if (kind === 'horn') {
-    line(g, AX + 6, hy + 9, hx + 4, hyy - 1, '#e8b830', 2);
-    disc(g, hx + 6, hyy - 2, 3, '#f0c840'); disc(g, hx + 6, hyy - 2, 1, '#a87810');
+// Instruments for the travelling band, drawn over the body; hands go on top of them.
+function drawInstrument(g, v, kind, hf, hb, tt, skin) {
+  const hand = ([x, y]) => { P(g, x - 1, y - 1, 3, 3, skin.m); P(g, x - 1, y - 1, 1, 1, skin.l); };
+  if (kind === 'drums') {
+    const sh = ramp('#c8303a'), cym = ramp('#e8c040'), st = '#8a8e9a';
+    P(g, AX - 4, FY - 4, 2, 4, '#3a3a44'); P(g, AX - 6, FY, 6, 1, '#3a3a44'); // throne
+    line(g, AX + 15, tt - 2, AX + 15, FY, st, 1); ellipse(g, AX + 15, tt - 3, 5, 1, cym.m); P(g, AX + 11, tt - 4, 4, 1, cym.h); // crash
+    disc(g, AX + 8, FY - 6, 6, sh.m); P(g, AX + 5, FY - 12, 5, 1, sh.l); // kick drum, head toward us
+    disc(g, AX + 8, FY - 6, 4, '#f2eee6'); P(g, AX + 6, FY - 9, 3, 1, '#ffffff');
+    P(g, AX + 6, FY - 6, 5, 1, '#2a2a34'); P(g, AX + 7, FY - 5, 3, 1, '#2a2a34'); // band logo
+    P(g, AX + 1, tt + 6, 7, 3, sh.m); P(g, AX + 1, tt + 6, 7, 1, '#f4f4f8'); P(g, AX + 1, tt + 8, 7, 1, sh.d); // snare
+    ellipse(g, AX + 11, tt + 5, 3, 1, '#f4f4f8'); P(g, AX + 8, tt + 6, 7, 2, sh.m); // rack tom
+    for (const h of [hb, hf]) {
+      const up = h[1] < tt + 1;
+      line(g, h[0], h[1], h[0] + 5, h[1] + (up ? -3 : 2), '#e8d0a0', 1);
+      hand(h);
+    }
+  } else {
+    const bass = kind === 'bass', col = ramp(BAND_GUITARS[v.instrIdx] || '#d02a34');
+    const bx = AX + 1, by = tt + 6, nx = AX + (bass ? 17 : 14), ny = tt - (bass ? 4 : 2);
+    line(g, AX - 2, tt, bx - 4, by + 1, '#1a1a22', 1); // strap
+    line(g, bx + 3, by - 2, nx, ny, '#6a4020', 2); line(g, bx + 3, by - 3, nx, ny - 1, '#a87040', 1);
+    P(g, nx, ny - 2, 2, 3, '#2a2a30'); P(g, nx + 1, ny - 2, 1, 1, '#c8ccd8');
+    ellipse(g, bx - 1, by + 1, 4, 3, col.m); ellipse(g, bx + 2, by - 1, 3, 2, col.m);
+    P(g, bx - 4, by, 2, 1, col.l); P(g, bx - 3, by - 1, 2, 1, col.h); P(g, bx - 3, by + 4, 5, 1, col.d);
+    P(g, bx - 1, by - 1, 3, 3, bass ? '#3a2418' : '#f0ece0'); // pickguard
+    P(g, bx + 1, by - 1, 1, 2, '#2a2a30'); P(g, bx - 3, by + 1, 1, 2, '#c8ccd8');
+    hand(hb); hand(hf);
   }
 }
 
@@ -1151,23 +1306,20 @@ function makeParkedBike() {
 
 function buildRider(v, frame, carry) {
   const c = mk(SW, SH), g = c.getContext('2d'), L = v.look;
-  const skin = ramp(L.skin), hair = ramp(L.hair), shirt = ramp(L.shirt), pants = ramp(L.pants);
+  const skin = skinRamp(L.skin), hair = ramp(L.hair), shirt = ramp(L.shirt), pants = ramp(L.pants);
   drawBike(g, frame, AX, FY);
   const tb = FY - 10, tt = tb - 8, hy = tt - 12;
   const a = (frame / 4) * Math.PI * 2, pedal = [AX + 1 + Math.round(Math.cos(a) * 3), FY - 4 + Math.round(Math.sin(a) * 3)];
   const pedal2 = [AX + 1 - Math.round(Math.cos(a) * 3), FY - 4 - Math.round(Math.sin(a) * 3)];
   limb(g, [AX - 2, tb], pedal2, { m: pants.d, l: pants.d }, { m: SHOE.d, l: SHOE.m, d: SHOE.o }, false);
   drawTorso(g, v, tt, tb, shirt, pants, skin);
-  tpl(g, HEAD, AX - 5, hy, { S: skin.m, s: skin.d, H: skin.l, E: skin.o, n: skin.d, w: '#ffffff', e: OUT, b: '#e8907c', m: skin.o, k: hair.d });
-  tpl(g, HAIR[L.style], AX - 6, hy - 2, { h: hair.m, k: hair.d, j: hair.l });
-  const hat = HATS[v.hat || v.job];
-  if (hat) tpl(g, hat.rows, AX - 5 + hat.ox, hy + hat.oy, hat.map);
+  const eyes = drawHead(g, v, hy, skin, hair);
   limb(g, [AX - 1, tb], pedal, { m: pants.m, l: pants.l }, { m: SHOE.m, l: SHOE.l, d: SHOE.d }, true);
   limb(g, [AX + 3, tt + 2], [AX + 6, FY - 13], shirt, skin, true);
   P(g, AX - 7, tb - 4, 5, 4, '#8a5a30'); P(g, AX - 7, tb - 4, 5, 1, '#a87a48');
   if (carry === 'package') { P(g, AX + 6, FY - 11, 5, 4, '#c8a068'); P(g, AX + 8, FY - 11, 1, 4, '#e8d8a0'); }
   outline(c);
-  return { cv: c, eyeX: AX + 3, eyeY: hy + 5, top: hy - 6 };
+  return { cv: c, eyes, top: hy - 6 };
 }
 
 /* ---------- foliage: Colorado Front Range trees and shrubs ---------- */
@@ -1606,9 +1758,9 @@ function drawLamp(g, x, by) {
 
 function drawHaystack(g, cx, by, snow) {
   const hy = ramp('#d8b048');
-  ellipse(g, cx, by - 7, 13, 7, hy.m); ellipse(g, cx - 3, by - 10, 7, 3, hy.l); P(g, cx - 12, by - 2, 25, 2, hy.d);
-  for (let i = 0; i < 9; i++) P(g, cx - 10 + i * 2.5, by - 9 + (i % 3) * 2, 1, 3, i % 2 ? hy.d : hy.h);
-  if (snow) ellipse(g, cx - 1, by - 12, 9, 2, '#ffffff');
+  ellipse(g, cx, by - 5, 9, 5, hy.m); ellipse(g, cx - 2, by - 7, 5, 2, hy.l); P(g, cx - 8, by - 1, 17, 1, hy.d);
+  for (let i = 0; i < 6; i++) P(g, cx - 7 + i * 2.5, by - 7 + (i % 3) * 2, 1, 2, i % 2 ? hy.d : hy.h);
+  if (snow) ellipse(g, cx - 1, by - 9, 6, 2, '#ffffff');
 }
 
 function makeHouse(h, snow) {
@@ -1691,27 +1843,45 @@ function drawWoodpile(g, snow) {
   if (snow) { P(g, lx + 5, ly - 21, 9, 2, '#ffffff'); P(g, lx - 4, ly - 13, 6, 1, '#ffffff'); P(g, lx + 18, ly - 13, 5, 1, '#ffffff'); }
 }
 
+// The whole land layer at once (tests, tools). The card builds it in steps across frames instead.
 function buildLand(snow, season = 'summer') {
+  const it = buildLandSteps(snow, season);
+  let r;
+  while (!(r = it.next()).done);
+  return r.value;
+}
+
+// Builds the land layer, yielding between stages so a slow device never freezes for long.
+function* buildLandSteps(snow, season = 'summer') {
   const c = mk(RW, RH), g = c.getContext('2d');
   const im = g.createImageData(RW, RH), d = im.data;
   const kind = new Uint8Array(RW * RH);
   const set = (x, y, col) => { const i = (y * RW + x) * 4; d[i] = col[0]; d[i + 1] = col[1]; d[i + 2] = col[2]; d[i + 3] = 255; };
   const C = (arr) => arr.map(hexToRgb);
 
-  // two mountain ranges: lit left faces, shadowed right faces, snowcaps and crevices
-  const range = (seed, yBase, hMin, hMax, pal, capDepth) => {
+  // two mountain ranges: lit left faces, shadowed right faces, snowcaps and crevices.
+  // Each layer below (far range, near range, pine hills, near hills) fills its columns down to the
+  // horizon, so a layer only paints the rows above the next one's top.
+  const ridge = (seed, yBase, hMin, hMax) => {
     const rr = mulberry32(seed), peaks = [];
     for (let x = -60; x < RW + 60; x += 50 + rr() * 60) peaks.push({ x, top: yBase - hMin - rr() * (hMax - hMin), s: 0.7 + rr() * 0.4 });
-    const [rl, rd, rc, sl, sd, hz] = C(pal);
+    const cols = [];
     for (let x = 0; x < RW; x++) {
       let pk = null, best = 1e9;
       for (const k of peaks) {
         const y = k.top + Math.abs(x - k.x) * k.s + vnoise(x * 0.2, k.x, seed) * 3;
         if (y < best) { best = y; pk = k; }
       }
-      const top = Math.max(0, Math.round(best)), lit = x < pk.x;
+      cols.push({ pk, best, top: Math.max(0, Math.round(best)) });
+    }
+    return cols;
+  };
+  const range = (seed, cols, stop, pal, capDepth) => {
+    const [rl, rd, rc, sl, sd, hz] = C(pal);
+    for (let x = 0; x < RW; x++) {
+      const { pk, best, top } = cols[x], lit = x < pk.x;
       const cap = capDepth + vnoise(x * 0.18, 1, seed + 1) * 8 - (snow ? -6 : 0);
-      for (let y = top; y < HZ; y++) {
+      for (let y = top, end = Math.min(HZ, stop[x]); y < end; y++) {
         const depth = y - pk.top, under = y - best;
         let col;
         if (depth < cap) col = lit ? sl : sd;
@@ -1727,13 +1897,6 @@ function buildLand(snow, season = 'summer') {
       }
     }
   };
-  range(41, HZ - 34, 38, 72, snow
-    ? ['#c4d0e8', '#9aaacb', '#8494b8', '#ffffff', '#d4e0f4', '#c8d4ea']
-    : ['#9eb0d0', '#7688b0', '#66769e', '#f0f6ff', '#c2d2ec', '#b0c0dc'], 14);
-  range(42, HZ - 22, 20, 44, snow
-    ? ['#b0c0dc', '#8494b8', '#6e7ea4', '#ffffff', '#d0dcf0', '#bccae2']
-    : ['#8a9cc2', '#5e6c96', '#4c5884', '#eef4ff', '#b8c8e4', '#a8b8d8'], 9);
-
   // mid hills crowned with pines
   const hill = C(snow ? ['#c4d2e6', '#dce6f4'] : ['#3c765a', '#54926a']);
   const pine = C(snow ? ['#5a7a90', '#e8f0fa'] : ['#2a5a44', '#3f7656']);
@@ -1748,19 +1911,33 @@ function buildLand(snow, season = 'summer') {
       if (yy < pineTop[x]) { pineTop[x] = yy; pineLit[x] = x < px ? 1 : 0; }
     }
   }
+  const nh = (x) => HZ - 11 + 5 * Math.sin(x * 0.017 + 2) + 3 * vnoise(x * 0.05, 0.7, 17);
+  const nearTop = [], hillTop = [], far = ridge(41, HZ - 34, 38, 72), mid = ridge(42, HZ - 22, 20, 44);
+  for (let x = 0; x < RW; x++) {
+    nearTop.push(Math.round(nh(x)));
+    hillTop.push(Math.min(nearTop[x], Math.max(0, Math.min(Math.round(pineTop[x]), Math.round(mh(x))))));
+  }
+  range(41, far, mid.map((c, x) => Math.min(c.top, hillTop[x])), snow
+    ? ['#c4d0e8', '#9aaacb', '#8494b8', '#ffffff', '#d4e0f4', '#c8d4ea']
+    : ['#9eb0d0', '#7688b0', '#66769e', '#f0f6ff', '#c2d2ec', '#b0c0dc'], 14);
+  yield;
+  range(42, mid, hillTop, snow
+    ? ['#b0c0dc', '#8494b8', '#6e7ea4', '#ffffff', '#d0dcf0', '#bccae2']
+    : ['#8a9cc2', '#5e6c96', '#4c5884', '#eef4ff', '#b8c8e4', '#a8b8d8'], 9);
+  yield;
+
   for (let x = 0; x < RW; x++) {
     const ht = Math.round(mh(x)), pt = Math.round(pineTop[x]);
-    for (let y = Math.max(0, Math.min(pt, ht)); y < HZ; y++) {
+    for (let y = Math.max(0, Math.min(pt, ht)), end = nearTop[x]; y < end && y < HZ; y++) {
       if (y < ht) set(x, y, pineLit[x] ? pine[1] : pine[0]);
       else set(x, y, y - ht < 2 || (hash2(x, y, 17) < 0.06) ? hill[1] : hill[0]);
     }
   }
 
   // near hills
-  const nh = (x) => HZ - 11 + 5 * Math.sin(x * 0.017 + 2) + 3 * vnoise(x * 0.05, 0.7, 17);
   const near = C(snow ? ['#d4e0f0', '#ffffff', '#b8c8dc'] : ['#4c8c46', '#6cae54', '#3c7638']);
   for (let x = 0; x < RW; x++) {
-    const ht = Math.round(nh(x));
+    const ht = nearTop[x];
     for (let y = ht; y < HZ; y++) set(x, y, y - ht < 2 ? near[1] : (y - ht) / (HZ - ht) > 0.6 + bayer(x, y) * 0.4 ? near[2] : near[0]);
   }
 
@@ -1792,6 +1969,7 @@ function buildLand(snow, season = 'summer') {
   const cols = Array.from({ length: RW }, () => []);
   for (const sg of segs) {
     const x0 = Math.max(0, Math.floor(Math.min(sg[0], sg[2]) - 16)), x1 = Math.min(RW - 1, Math.ceil(Math.max(sg[0], sg[2]) + 16));
+    sg.push(Math.min(sg[1], sg[3]) - 14, Math.max(sg[1], sg[3]) + 14); // rows a path can reach (widest half-width × wobble < 14)
     for (let x = x0; x <= x1; x++) cols[x].push(sg);
   }
   const segDist = (x, y, [ax, ay, bx, by]) => {
@@ -1801,9 +1979,10 @@ function buildLand(snow, season = 'summer') {
   // half-widths; edges wobble so paths look trodden rather than drawn
   const HW = { main: 11, lane: 7.5, path: 5.5, foot: 3.2 };
   const pathAt = (x, y) => {
-    let out = null;
-    const wob = 0.8 + 0.4 * vnoise(x * 0.07, y * 0.07, 44);
+    let out = null, wob = -1;
     for (const sg of cols[x]) {
+      if (y < sg[5] || y > sg[6]) continue;
+      if (wob < 0) wob = 0.8 + 0.4 * vnoise(x * 0.07, y * 0.07, 44);
       const d = segDist(x, y, sg), hw = HW[sg[4]] * wob;
       if (d >= hw) continue;
       if ((sg[4] === 'main' || sg[4] === 'lane') && d < hw - 2.5 - en(x + y, 2) * 0.7) return 'cob';
@@ -1849,7 +2028,9 @@ function buildLand(snow, season = 'summer') {
     return pal[l];
   };
   const lv = (v) => Math.max(0, Math.min(3, v));
+  yield;
   for (let y = HZ; y < RH; y++) {
+    if ((y - HZ) % 40 === 39) yield;
     for (let x = 0; x < RW; x++) {
       const r = region(x, y), k = y * RW + x;
       let col;
@@ -1886,6 +2067,7 @@ function buildLand(snow, season = 'summer') {
     }
   }
   g.putImageData(im, 0, 0);
+  yield;
   const K = (x, y) => kind[(y | 0) * RW + (x | 0)];
   const hexG = snow ? ['#b8c8dc', '#ffffff'] : season === 'winter' ? ['#5a5a3a', '#c8b884'] : season === 'fall' ? ['#4a6a2e', '#c0c470'] : ['#3a7a2c', '#9ad86a'];
 
@@ -1965,6 +2147,7 @@ function buildLand(snow, season = 'summer') {
 
   if (season !== 'winter' || snow) drawBackFarm(g, snow);
 
+  yield;
   // Trees and props are separate sprites, sorted by depth with everything that moves.
   const props = [];
   const prop = (bx, by, bw, bh, sortY, fn) => {
@@ -1981,6 +2164,7 @@ function buildLand(snow, season = 'summer') {
     ['spruce', 40, 72, 6], ['pine', 134, 70, 6], ['aspen', 160, 70, 5], ['spruce', 228, 70, 6], ['pine', -2, 78, 6],
     ['aspen', 88, 64, 4], ['spruce', 221, 106, 5], ['spruce', 63, 63, 3], ['aspen', 197, 71, 4],
   ].forEach(([kind, x, y, r], i) => tree(kind, x, y, r, 100 + i));
+  yield;
   const wx = WELL.x * S, wy = WELL.y * S - 3;
   prop(wx - 22, wy - 58, 44, 62, WELL.y - 0.6, (pg) => drawWell(pg, snow));
   prop(FARM.x0 - 6, FARM.y1 - 4, FARM.x1 - FARM.x0 + 12, 14, (FARM.y1 + 6) / S, (pg) => drawBackFence(pg, snow));
@@ -1998,7 +2182,8 @@ function buildLand(snow, season = 'summer') {
     const w = br * 5 + 6, h = br * 3 + 6;
     prop(bx - (w >> 1) - 2, by - h - 1, w + 4, h + 4, by / S - 0.2, (pg) => drawShrub(pg, kind, bx, by, br, snow, season));
   }
-  prop(FARM.x0 - 30, FARM.y1 - 15, 32, 20, (FARM.y1 + 2) / S, (pg) => drawHaystack(pg, FARM.x0 - 14, FARM.y1 + 2, snow));
+  const hx = FARM.x0 - 9, hy = FARM.y0 + 13;
+  prop(hx - 11, hy - 13, 22, 15, hy / S, (pg) => drawHaystack(pg, hx, hy, snow));
   prop(CART.x - 30, CART.by - 60, 60, 63, CART.by / S, (pg) => drawCoffeeCart(pg, snow));
   const mbx = PATIO.x0 - 10, mby = PATIO.y0 + 8;
   prop(mbx - 8, mby - 19, 16, 21, mby / S, (pg) => drawMenuBoard(pg, mbx, mby, snow));
@@ -2394,8 +2579,8 @@ function reactionKind(t) {
 
 // When was this entity last "activated"? Scenes and buttons store it as their state, scripts and
 // automations as last_triggered; anything else counts its last state change.
-function activatedAt(st, now) {
-  const d = domainOf(st.entity_id);
+function activatedAt(st, now, id = st.entity_id) {
+  const d = domainOf(id);
   // never-used scenes and buttons report "unknown": they haven't been activated
   if (['scene', 'button', 'input_button', 'event'].includes(d)) return Date.parse(st.state);
   if (d === 'script' && st.state === 'on') return now;
@@ -2412,7 +2597,7 @@ function evalReactions(list, states, now = Date.now()) {
     if (!t || !REACTION_MODES.has(t.mode) || reactionKind(t) !== 'activated') return;
     const st = states[t.entity];
     if (!st) return;
-    const ts = activatedAt(st, now);
+    const ts = activatedAt(st, now, t.entity);
     if (!isNaN(ts) && ts <= now + 60000 && (!latest || ts > latest.ts)) latest = { i, ts };
   });
   if (latest && (now - latest.ts) / 60000 >= (Number(list[latest.i].duration) || 120)) latest = null;
@@ -2460,20 +2645,20 @@ function suggestReactions(states, existing = []) {
   const have = new Set(existing.map((t) => `${t.entity}|${t.mode}`));
   const out = [];
   const add = (s) => { if (!have.has(`${s.entity}|${s.mode}`)) { have.add(`${s.entity}|${s.mode}`); out.push(s); } };
-  const nameOf = (st) => String(st.attributes?.friendly_name || st.entity_id.split('.')[1].replace(/_/g, ' '));
-  for (const st of Object.values(states)) {
-    const d = domainOf(st.entity_id), name = nameOf(st);
+  const nameOf = (id, st) => String(st.attributes?.friendly_name || id.split('.')[1].replace(/_/g, ' '));
+  for (const [id, st] of Object.entries(states)) {
+    const d = domainOf(id), name = nameOf(id, st);
     if (['scene', 'script', 'button', 'input_button'].includes(d)) {
       const hit = SUGGEST_WORDS.find(([, re]) => re.test(name));
-      if (hit) add({ entity: st.entity_id, when: 'activated', mode: hit[0], duration: SUGGEST_DURATION[hit[0]], why: hit[0] === 'auto' ? `"${name}" sounds like the start of a normal day` : `"${name}" sounds like ${MODES[hit[0]].label.toLowerCase()}` });
+      if (hit) add({ entity: id, when: 'activated', mode: hit[0], duration: SUGGEST_DURATION[hit[0]], why: hit[0] === 'auto' ? `"${name}" sounds like the start of a normal day` : `"${name}" sounds like ${MODES[hit[0]].label.toLowerCase()}` });
     } else if (['input_boolean', 'switch'].includes(d)) {
       const hit = SUGGEST_WORDS.find(([m, re]) => ['party', 'movie', 'gaming', 'sleep', 'away', 'cozy'].includes(m) && re.test(name));
-      if (hit) add({ entity: st.entity_id, when: 'on', mode: hit[0], why: `while "${name}" is on` });
+      if (hit) add({ entity: id, when: 'on', mode: hit[0], why: `while "${name}" is on` });
     } else if (d === 'alarm_control_panel') {
-      add({ entity: st.entity_id, when: 'state', state: ['armed_away', 'armed_vacation'], mode: 'away', why: `when "${name}" is armed away` });
-      add({ entity: st.entity_id, when: 'state', state: ['armed_night'], mode: 'sleep', why: `when "${name}" is armed for the night` });
+      add({ entity: id, when: 'state', state: ['armed_away', 'armed_vacation'], mode: 'away', why: `when "${name}" is armed away` });
+      add({ entity: id, when: 'state', state: ['armed_night'], mode: 'sleep', why: `when "${name}" is armed for the night` });
     } else if (d === 'media_player' && (st.attributes?.device_class === 'tv' || /\b(tv|television|living room|lounge|theat(er|re)|projector)\b/i.test(name))) {
-      add({ entity: st.entity_id, when: 'state', state: ['playing'], mode: 'movie', why: `while "${name}" is playing` });
+      add({ entity: id, when: 'state', state: ['playing'], mode: 'movie', why: `while "${name}" is playing` });
     }
   }
   const people = Object.keys(states).filter((k) => k.startsWith('person.'));
@@ -2583,8 +2768,12 @@ function loadHaComponents() {
   return haComponents;
 }
 
+const stableJson = (v) => JSON.stringify(v, (k, x) => (x && typeof x === 'object' && !Array.isArray(x) ? Object.fromEntries(Object.keys(x).sort().map((key) => [key, x[key]])) : x));
+
 class PixelVillageCardEditor extends HTMLElement {
   setConfig(config) {
+    // HA hands back every config we emit; rebuilding then would steal focus mid-typing.
+    if (this._ready && this._emitted && stableJson(config) === this._emitted) return;
     this._config = { ...config, triggers: Array.isArray(config.triggers) ? config.triggers.map((t) => ({ ...t })) : [] };
     if (this._ready) this._refresh();
   }
@@ -2593,7 +2782,9 @@ class PixelVillageCardEditor extends HTMLElement {
     this._hass = hass;
     if (this._ready) {
       for (const f of this.shadowRoot.querySelectorAll('ha-form')) f.hass = hass;
-      this._renderSuggestions();
+      // suggestions scan every entity: at most every few seconds, not on every state change
+      const now = Date.now();
+      if (now - (this._suggAt || 0) > 5000) { this._suggAt = now; this._renderSuggestions(); }
     }
   }
 
@@ -2621,6 +2812,7 @@ class PixelVillageCardEditor extends HTMLElement {
       if (Object.keys(sch).length) c.schedule = sch; else delete c.schedule;
     }
     this._config = { ...this._config, schedule: c.schedule };
+    this._emitted = stableJson(c);
     this.dispatchEvent(new CustomEvent('config-changed', { detail: { config: c }, bubbles: true, composed: true }));
   }
 
@@ -2811,6 +3003,70 @@ function hourToTime(h) {
   return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
 }
 
+/* ---------- shared render caches ---------- */
+
+// Soft radial glows, drawn once per (radius, colour) and stamped with globalAlpha.
+const glowCache = new Map();
+function glowSprite(r, rgb) {
+  const key = `${r}|${rgb}`;
+  let c = glowCache.get(key);
+  if (!c) {
+    c = mk(r * 2, r * 2);
+    const g = c.getContext('2d'), gr = g.createRadialGradient(r, r, 0, r, r, r);
+    gr.addColorStop(0, `rgba(${rgb},1)`); gr.addColorStop(1, `rgba(${rgb},0)`);
+    g.fillStyle = gr; g.fillRect(0, 0, r * 2, r * 2);
+    glowCache.set(key, c);
+  }
+  return c;
+}
+
+// Land layers (terrain + props + sky mask) and houses are shared by every card on the page, keyed by
+// snow/season, and both snow states stay cached so weather flips don't rebuild them.
+const landCache = new Map(), landJobs = new Map();
+// Returns the land for these conditions, or null while it's still being built (a few ms per call).
+function sharedLand(snow, season, budget = Infinity) {
+  const key = `${snow ? 'snow' : 'green'}|${season}`;
+  let L = landCache.get(key);
+  if (!L) {
+    let job = landJobs.get(key);
+    if (!job) landJobs.set(key, (job = buildLandSteps(snow, season)));
+    const t0 = performance.now();
+    let r;
+    while (!(r = job.next()).done) if (performance.now() - t0 > budget) return null;
+    landJobs.delete(key);
+    const land = r.value;
+    // where the sky shows through: everything the land layer doesn't cover (only the sky rows matter)
+    const mask = mk(RW, HZ + 10), mg = mask.getContext('2d');
+    mg.fillStyle = '#fff'; mg.fillRect(0, 0, RW, HZ + 10);
+    mg.globalCompositeOperation = 'destination-out'; mg.drawImage(land, 0, 0);
+    const alpha = mg.getImageData(0, 0, RW, HZ + 10).data;
+    L = { land, mask, skyAt: (x, y) => y >= 0 && y < HZ + 10 && x >= 0 && x < RW && alpha[(y * RW + x) * 4 + 3] > 0 };
+    if (landCache.size >= 2) landCache.delete(landCache.keys().next().value); // today's green and snowy land
+    landCache.set(key, L);
+  }
+  return L;
+}
+const sharedArt = { houses: {}, stages: {} };
+
+// The party's light strings (lamp to lamp, lamps to the tavern) never move.
+let partyStrings = null;
+function getPartyStrings() {
+  if (partyStrings) return partyStrings;
+  const [l0, l1] = LAMPS, tv = HOUSES[2].g;
+  return (partyStrings = [[[l0[0], l0[1] - 40], [l1[0], l1[1] - 40]], [[l0[0], l0[1] - 40], [tv.X - 4, tv.top + 6]], [[tv.X + tv.Wd + 4, tv.top + 6], [l1[0], l1[1] - 40]]]
+    .map(([[x0, y0], [x1, y1]]) => {
+      const pts = [], n = Math.max(2, Math.round(Math.abs(x1 - x0) / 4));
+      for (let i = 0; i <= n; i++) {
+        const u = i / n;
+        pts.push([Math.round(x0 + (x1 - x0) * u), Math.round(y0 + (y1 - y0) * u + Math.sin(u * Math.PI) * 14)]);
+      }
+      return pts;
+    }));
+}
+
+const byDepth = (p, q) => p.y - q.y || p.o - q.o;
+const SPRITE_CACHE_MAX = 64; // per villager; oldest poses are dropped first
+
 /* ---------- the card ---------- */
 
 class PixelVillageCard extends HTMLElement {
@@ -2818,32 +3074,68 @@ class PixelVillageCard extends HTMLElement {
     return document.createElement('pixel-village-card-editor');
   }
 
-  static getStubConfig() {
-    return { villagers: 6 };
+  static getStubConfig(hass) {
+    const weather = autoWeather(hass?.states || {});
+    return weather ? { villagers: 6, weather_entity: weather } : { villagers: 6 };
   }
 
   setConfig(config) {
-    if (!config) throw new Error('Invalid configuration');
-    if (config.triggers !== undefined && !Array.isArray(config.triggers)) throw new Error('triggers must be a list');
+    validateConfig(config);
+    // Title, status line and frame rate don't need a new village (keeps the editor preview steady).
+    const worldKey = JSON.stringify({ ...config, title: 0, show_status: 0, fps: 0 });
+    const keepWorld = this._villagers && worldKey === this._worldKey;
+    this._worldKey = worldKey;
     this._config = {
-      villagers: 6, fps: 15, show_status: true, sun_entity: 'sun.sun', triggers: [], ...config,
+      villagers: 6, fps: DEFAULT_FPS, show_status: true, sun_entity: 'sun.sun', triggers: [], ...config,
     };
     this._schedule = { ...DEFAULT_SCHEDULE };
     for (const [k, v] of Object.entries(config.schedule || {})) this._schedule[k] = parseHour(v);
+    this._watchKey = null;
+    this._warned = false;
+    this._userSun = config.sun_entity;
     if (!this.shadowRoot) this._build();
     this._title.textContent = config.title || '';
     this._title.style.display = config.title ? '' : 'none';
     this._status.style.display = this._config.show_status ? '' : 'none';
-    this._initVillage();
+    if (!keepWorld) this._initVillage();
   }
 
+  // HA sets hass on every state change in the house; only react when something this card uses changed.
   set hass(hass) {
+    const prev = this._hass;
     this._hass = hass;
-    if (this._villagers) this._updateMode();
+    if (!this._villagers) return;
+    if (!prev || prev.locale?.time_zone !== hass.locale?.time_zone || prev.config?.time_zone !== hass.config?.time_zone) {
+      this._updateMode();
+      return;
+    }
+    const ps = prev.states || {}, ns = hass.states || {};
+    if (this._watched().some((e) => ps[e] !== ns[e])) this._updateMode();
+  }
+
+  // Entities the card reads: weather, sun, mood helper and every reaction's entity.
+  _watched() {
+    const c = this._config;
+    const key = `${c.weather_entity}|${this._autoWeather}`;
+    if (this._watchKey !== key) {
+      this._watchKey = key;
+      const w = c.weather_entity === undefined ? this._autoWeather : c.weather_entity;
+      this._watch = [...new Set([w, c.sun_entity, c.mode_entity, ...(c.triggers || []).map((t) => t?.entity)].filter((e) => typeof e === 'string' && e))];
+    }
+    return this._watch;
+  }
+
+  _warnMissing() {
+    const states = this._hass?.states;
+    if (this._warned || !states || !Object.keys(states).length) return;
+    this._warned = true;
+    // the default sun.sun only counts if the user picked it; without it the card uses the clock
+    const missing = this._watched().filter((e) => !states[e] && !(e === 'sun.sun' && !this._userSun));
+    if (missing.length) console.warn(`pixel-village-card: these entities don't exist in Home Assistant: ${missing.join(', ')}`);
   }
 
   getCardSize() {
-    return 4;
+    return 3 + (this._config?.title ? 1 : 0) + (this._config?.show_status === false ? 0 : 1);
   }
 
   getGridOptions() {
@@ -2853,12 +3145,14 @@ class PixelVillageCard extends HTMLElement {
   connectedCallback() {
     this._connected = true;
     this._io?.observe(this._canvas);
+    document.addEventListener('visibilitychange', this._onVis);
     this._sync();
   }
 
   disconnectedCallback() {
     this._connected = false;
     this._io?.disconnect();
+    document.removeEventListener('visibilitychange', this._onVis);
     this._sync();
   }
 
@@ -2869,7 +3163,10 @@ class PixelVillageCard extends HTMLElement {
     root.innerHTML = `
       <style>
         ha-card { display: block; overflow: hidden; }
-        .title { padding: 12px 16px 8px; font-size: 1.1em; font-weight: 500; }
+        .title {
+          padding: 12px 16px 8px; font-size: var(--ha-card-header-font-size, 1.1em); font-weight: 500;
+          color: var(--ha-card-header-color, var(--primary-text-color));
+        }
         canvas {
           display: block; width: 100%; aspect-ratio: ${W} / ${H};
           image-rendering: pixelated; image-rendering: crisp-edges;
@@ -2883,14 +3180,15 @@ class PixelVillageCard extends HTMLElement {
       </style>
       <ha-card>
         <div class="title"></div>
-        <canvas width="${RW}" height="${RH}"></canvas>
+        <canvas width="${RW}" height="${RH}" role="img" aria-label="Pixel village"></canvas>
         <div class="status"></div>
       </ha-card>`;
     this._title = root.querySelector('.title');
     this._canvas = root.querySelector('canvas');
     this._status = root.querySelector('.status');
-    this._ctx = this._canvas.getContext('2d');
+    this._ctx = this._canvas.getContext('2d', { alpha: false });
     this._visible = true;
+    this._loop = 0;
     this._t = 0;
 
     if ('IntersectionObserver' in window) {
@@ -2901,7 +3199,7 @@ class PixelVillageCard extends HTMLElement {
       if (this._connected) this._io.observe(this._canvas);
     }
     this._onVis = () => this._sync();
-    document.addEventListener('visibilitychange', this._onVis);
+    if (this._connected) document.addEventListener('visibilitychange', this._onVis);
     this._canvas.addEventListener('click', (e) => this._click(e));
   }
 
@@ -2910,15 +3208,17 @@ class PixelVillageCard extends HTMLElement {
     if (run && !this._running) {
       this._running = true;
       this._last = performance.now();
-      this._tick();
+      this._tick(++this._loop);
     } else if (!run && this._running) {
       this._running = false;
+      this._loop++; // a frame already queued from the old loop sees a stale id and stops
       clearTimeout(this._timer);
+      cancelAnimationFrame(this._raf);
     }
   }
 
-  _tick() {
-    if (!this._running) return;
+  _tick(loop) {
+    if (!this._running || loop !== this._loop) return;
     const now = performance.now();
     const dt = Math.min((now - this._last) / 1000, 0.25);
     this._last = now;
@@ -2929,9 +3229,22 @@ class PixelVillageCard extends HTMLElement {
       this._spawnGuests();
     }
     this._update(dt);
+    const t0 = performance.now();
     this._render();
-    const fps = Math.max(2, Math.min(30, this._config.fps || 12));
-    this._timer = setTimeout(() => requestAnimationFrame(() => this._tick()), 1000 / fps);
+    this._pace(performance.now() - t0);
+    const fps = Math.max(2, Math.min(30, this._config.fps || DEFAULT_FPS, this._fpsCap || 30));
+    this._timer = setTimeout(() => { this._raf = requestAnimationFrame(() => this._tick(loop)); }, 1000 / fps);
+  }
+
+  // On a device that can't keep up (frames over ~40% of their budget), drop to 10 fps; recover if it can.
+  _pace(ms) {
+    const s = (this._paceS ||= { n: 0, sum: 0 });
+    s.sum += ms;
+    if (++s.n < 60) return;
+    const avg = s.sum / s.n, budget = 1000 / (this._config.fps || DEFAULT_FPS);
+    if (!this._fpsCap && avg > budget * 0.4) this._fpsCap = 10;
+    else if (this._fpsCap && avg < 100 * 0.15) this._fpsCap = 0;
+    s.n = 0; s.sum = 0;
   }
 
   /* ----- world state ----- */
@@ -2991,20 +3304,29 @@ class PixelVillageCard extends HTMLElement {
     this._sync();
   }
 
+  // Time zone as HA's frontend resolves it: the user's profile can say "local" (this browser) or "server".
+  _tz() {
+    return this._hass?.locale?.time_zone === 'local' ? undefined : this._hass?.config?.time_zone;
+  }
+
+  // The current date and time in that zone, as a local Date (only its fields are used).
+  _now() {
+    const tz = this._tz(), now = new Date();
+    if (!tz) return now;
+    try {
+      if (!this._fmt || this._fmtTz !== tz) {
+        this._fmt = new Intl.DateTimeFormat('en-US', { timeZone: tz, year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', hourCycle: 'h23' });
+        this._fmtTz = tz;
+      }
+      const f = {};
+      for (const p of this._fmt.formatToParts(now)) f[p.type] = +p.value;
+      return new Date(f.year, f.month - 1, f.day, f.hour % 24, f.minute);
+    } catch (e) { return now; }
+  }
+
   _hour() {
     if (typeof this.previewHour === 'number') return this.previewHour;
-    const tz = this._hass?.config?.time_zone;
-    const now = new Date();
-    if (tz) {
-      try {
-        if (!this._fmt || this._fmtTz !== tz) {
-          this._fmt = new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
-          this._fmtTz = tz;
-        }
-        const [hh, mm] = this._fmt.format(now).split(':').map(Number);
-        return hh + mm / 60;
-      } catch (e) { /* fall back to browser time */ }
-    }
+    const now = this._now();
     return now.getHours() + now.getMinutes() / 60;
   }
 
@@ -3039,12 +3361,13 @@ class PixelVillageCard extends HTMLElement {
 
     let wEnt = cfg.weather_entity;
     if (wEnt === undefined) {
-      if (this._autoWeather === undefined && this._hass) this._autoWeather = Object.keys(states).find((k) => k.startsWith('weather.')) || null;
+      // no weather configured: use the first one that's working (a broken forecast service can leave one unavailable)
+      if (this._hass && (this._autoWeather === undefined || !isLive(states[this._autoWeather]))) this._autoWeather = autoWeather(states);
       wEnt = this._autoWeather;
     }
     this._weather = readWeather(this.previewWeather ?? (wEnt ? states[wEnt]?.state : ''));
     this._phase = this._phaseFor(h);
-    this._season = this.previewSeason || seasonOf(new Date());
+    this._season = this.previewSeason || seasonOf(this._now());
     this._hourNow = h;
 
     if (mode !== this._mode) {
@@ -3062,7 +3385,9 @@ class PixelVillageCard extends HTMLElement {
     if (status !== this._statusText) {
       this._statusText = status;
       this._status.textContent = status;
+      this._canvas.setAttribute('aria-label', `Pixel village: ${label}. ${text}`);
     }
+    this._warnMissing();
   }
 
   _onModeChange(prev, triggered) {
@@ -3112,7 +3437,7 @@ class PixelVillageCard extends HTMLElement {
     const look = job === 'mail'
       ? { skin: p(LOOKS.skin), hair: p(LOOKS.hair), shirt: '#3a5a9a', pants: '#2a3a5a', style: 'short' }
       : job === 'band'
-        ? { skin: p(LOOKS.skin), hair: p(LOOKS.hair), shirt: '#c03a3a', pants: '#2a2a3a', style: rnd() < 0.3 ? 'long' : 'short', beard: rnd() < 0.3 }
+        ? { skin: p(LOOKS.skin), ...BAND_LOOKS[extra.instrIdx] }
         : {
           skin: p(LOOKS.skin), hair: p(LOOKS.hair), style: rnd() < 0.4 ? 'long' : 'short', beard: rnd() < 0.15,
           shirt: p(['#e85a5a', '#5a8ae8', '#e8c04a', '#8a5ac8', '#4ab8a0', '#e88a3a', '#d0d0d8', '#6a9a3a']),
@@ -3129,7 +3454,7 @@ class PixelVillageCard extends HTMLElement {
       v.hat = p([null, null, 'sunhat', 'beanie', 'cap']);
       v.gear = rnd() < 0.35; // hikers with backpacks and walking sticks
     }
-    if (job === 'band') v.hat = 'band';
+    if (job === 'band') v.hat = look.hat;
     this._villagers.push(v);
     return v;
   }
@@ -3175,7 +3500,7 @@ class PixelVillageCard extends HTMLElement {
     if (!v.active) return out();
     if (v.leaving) return out();
     const leave = () => { v.leaving = true; return out(); };
-    if (v.job === 'band') return m === 'party' ? { ...BAND_SPOTS[v.instrIdx], face: 1, action: 'perform', dur: rand(20, 40) } : leave();
+    if (v.job === 'band') return m === 'party' ? { ...BAND_SPOTS[v.instrIdx], action: 'perform', dur: rand(20, 40) } : leave();
     if (v.job === 'mail') return this._planMail(v, leave);
     if (m === 'sleep' || this._t > v.stayUntil) return leave();
     const fireSpot = (action) => {
@@ -3599,7 +3924,7 @@ class PixelVillageCard extends HTMLElement {
     const p = v.plan;
     v.walking = false;
     if (p.enter) v.inside = true;
-    if (p.gone) { v.gone = true; if (v.guest) { v.active = false; v.leaving = false; v.bike = false; } }
+    if (p.gone) { v.gone = true; if (v.guest) { v.active = false; v.leaving = false; v.bike = false; v.sprites.clear(); } }
     if (p.face) v.face = p.face;
     if (p.drop) v.carry = null;
     p.onArrive?.();
@@ -3681,7 +4006,7 @@ class PixelVillageCard extends HTMLElement {
 
     // sky
     for (const c of this._clouds) {
-      c.x += c.v * dt * (this._weather.storm ? 3 : 1);
+      c.x += c.v * dt * (this._weather.storm ? 3 : this._weather.wind ? 4 : 1);
       if (c.x > RW + 4) { c.x = -c.w - 8; c.y = rand(6, 80); }
     }
     for (const f of this._flies) {
@@ -3791,15 +4116,16 @@ class PixelVillageCard extends HTMLElement {
     const w = this._weather;
     const want = w.rain ? (w.heavy ? 70 : 40) : w.snow ? 45 : 0;
     while (this._drops.length < want) {
-      this._drops.push({ x: rand(0, W + 20), y: rand(-H, 0), land: rand(HORIZON, H), v: w.snow ? rand(8, 14) : rand(90, 130), snow: w.snow && !(w.rain && Math.random() < 0.5), p: rand(0, 6) });
+      this._drops.push({ x: rand(0, W + 20), y: rand(-H, 0), land: rand(HORIZON, H), v: w.snow ? rand(8, 14) : rand(90, 130), snow: w.snow && !(w.rain && Math.random() < 0.5), hail: w.hail, p: rand(0, 6) });
     }
     if (this._drops.length > want) this._drops.length = want;
     for (const d of this._drops) {
       d.p += dt;
       d.y += d.v * dt;
-      d.x += d.snow ? Math.sin(d.p) * 6 * dt : -14 * dt;
+      d.x += (d.snow ? Math.sin(d.p) * 6 : -14) * dt - (w.wind ? 30 * dt : 0);
       if (d.y > d.land) {
         if (!d.snow && this._splashes.length < 30) this._splashes.push({ x: d.x, y: d.land, t: 0.15 });
+        d.hail = w.hail;
         d.y = rand(-10, 0); d.x = rand(0, W + 20);
       }
     }
@@ -3837,27 +4163,23 @@ class PixelVillageCard extends HTMLElement {
   /* ----- rendering ----- */
 
   _tint() {
-    let t = TINT[this._phase];
-    if (this._weather.overcast) t = t ? mulHex(t, OVERCAST_TINT) : OVERCAST_TINT;
-    return t;
+    const t = TINT[this._phase];
+    if (!this._weather.overcast) return t;
+    if (!this._tintOver || this._tintFor !== t) { this._tintFor = t; this._tintOver = t ? mulHex(t, OVERCAST_TINT) : OVERCAST_TINT; }
+    return this._tintOver;
   }
 
   _buildBg() {
     const w = this._weather, ph = this._phase;
+    const landKey = `${w.snow ? 'snow' : 'green'}|${this._season}`;
+    if (this._landKey !== landKey) {
+      // built a few ms per frame; until it's ready the previous land (or just the sky) stays up
+      const L = sharedLand(w.snow, this._season, this._land ? 6 : 12);
+      if (L) this._useLand(L, landKey, w.snow);
+    }
     const key = `${ph}|${w.snow ? 's' : ''}|${w.overcast ? 'o' : ''}|${this._season}`;
     if (key === this._bgKey) return;
     this._bgKey = key;
-    const landKey = `${w.snow ? 'snow' : 'green'}|${this._season}`;
-    if (this._landKey !== landKey) {
-      this._land = buildLand(w.snow, this._season);
-      this._props = this._land.props;
-      // where the sky shows through: everything the land layer doesn't cover
-      this._skyMask = mk(RW, RH);
-      const mg = this._skyMask.getContext('2d');
-      mg.fillStyle = '#fff'; mg.fillRect(0, 0, RW, RH);
-      mg.globalCompositeOperation = 'destination-out'; mg.drawImage(this._land, 0, 0);
-      this._landKey = landKey;
-    }
     if (!this._bg) this._bg = mk(RW, RH);
     const g = this._bg.getContext('2d');
 
@@ -3881,14 +4203,24 @@ class PixelVillageCard extends HTMLElement {
     g.putImageData(im, 0, 0);
   }
 
+  _useLand(L, landKey, snow) {
+    this._land = L.land;
+    this._props = L.land.props;
+    this._skyMask = L.mask;
+    // stars hidden behind the mountains never show, so drop them once here
+    this._visStars = this._stars.filter((st) => L.skyAt(st.x, st.y));
+    this._moonSpr = null;
+    this._static = null;
+    this._landKey = landKey;
+    this._landSnow = snow;
+  }
+
   _art() {
     if (!this._a) {
       this._a = {
         pot: makePot(),
         projector: makeProjector(),
         sign: makeSign(),
-        stages: {},
-        houses: {},
         tables: TABLES.map(([, , c]) => makeCafeTable(c)),
         puffs: [null, 1, 2, 3, 4, 5].map((r) => r && makePuff(r, '#ffffff', '#e2e4ec', '#b4b8c8')),
         film: [0, 1, 2].map(makeFilmBg),
@@ -3898,51 +4230,74 @@ class PixelVillageCard extends HTMLElement {
   }
 
   _glow(ctx, x, y, r, rgb, a) {
+    r = Math.round(r);
     ctx.globalCompositeOperation = 'lighter';
-    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
-    g.addColorStop(0, `rgba(${rgb},${a})`);
-    g.addColorStop(1, `rgba(${rgb},0)`);
-    ctx.fillStyle = g;
-    ctx.fillRect(x - r, y - r, r * 2, r * 2);
+    ctx.globalAlpha = Math.max(0, Math.min(1, a));
+    ctx.drawImage(glowSprite(r, rgb), Math.round(x - r), Math.round(y - r));
+    ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = 'source-over';
+  }
+
+  // Houses, props, tables and the stage never move: build their depth entries once and keep them sorted.
+  // `o` keeps the original draw order for equal depths.
+  _staticItems(snow) {
+    if (this._static && this._staticSnow === snow) return this._static;
+    const ctx = this._ctx, a = this._art();
+    const stage = (sharedArt.stages[snow ? 1 : 0] ||= makeStage(snow));
+    const houses = (sharedArt.houses[snow ? 1 : 0] ||= HOUSES.map((h) => makeHouse(h, snow)));
+    const items = [{ y: 112.5, o: 2000, d: () => { ctx.drawImage(stage.cv, stage.x, stage.y); this._drawScreen(ctx); } }];
+    HOUSES.forEach((h, i) => items.push({ y: h.base + 0.3, o: 5000 + i, d: () => ctx.drawImage(houses[i].cv, houses[i].x, houses[i].y) }));
+    this._props.forEach((pr, i) => items.push({ y: pr.sortY, o: 6000 + i, d: () => ctx.drawImage(pr.cv, pr.x, pr.y) }));
+    TABLES.forEach(([tx, ty], i) => items.push({ y: (ty + 3) / S, o: 7000 + i, d: () => this._drawTable(ctx, i, tx, ty) }));
+    items.sort(byDepth);
+    this._staticSnow = snow;
+    return (this._static = items);
   }
 
   _render() {
     const ctx = this._ctx, w = this._weather, ph = this._phase, a = this._art();
     this._buildBg();
+    this._frameNo = (this._frameNo || 0) + 1;
+    // who sits at which café seat, once per frame
+    const seats = (this._seats ||= new Map());
+    seats.clear();
+    for (const v of this._villagers) if (!v.walking && !v.inside && !v.gone && v.plan?.seat !== undefined && (v.action === 'laptop' || v.action === 'sip')) if (!seats.has(v.plan.seat)) seats.set(v.plan.seat, v);
     ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = 'source-over';
     ctx.drawImage(this._bg, 0, 0); // sky only
+    if (!this._land) return; // first frames on a slow device: the land is still being built
 
     if (ph !== 'night' && !w.overcast) this._drawSun(ctx);
     this._drawClouds(ctx);
     ctx.drawImage(this._land, 0, 0); // mountains, hills and village in front of the sun and clouds
     if (this._mode === 'party') this._drawBunting(ctx);
 
-    // depth-sorted world objects
-    const items = [];
-    for (const v of this._villagers) if (!v.inside && !v.gone) items.push({ y: v.y, d: () => this._drawVillager(ctx, v) });
-    if (this._potOn()) items.push({ y: FIRE.y + 0.5, d: () => this._drawPot(ctx) });
-    const stage = (a.stages[w.snow ? 1 : 0] ||= makeStage(w.snow));
-    items.push({ y: 112.5, d: () => { ctx.drawImage(stage.cv, stage.x, stage.y); this._drawScreen(ctx); } });
-    if (this._screen > 0) items.push({ y: PROJ.y, d: () => this._drawProjector(ctx) });
-    if (this._mode === 'gaming' && this._screen > 0) items.push({ y: 112.6, d: () => this._drawConsole(ctx) });
-    const houses = (a.houses[w.snow ? 1 : 0] ||= HOUSES.map((h) => makeHouse(h, w.snow)));
-    HOUSES.forEach((h, i) => items.push({ y: h.base + 0.3, d: () => ctx.drawImage(houses[i].cv, houses[i].x, houses[i].y) }));
-    for (const pr of this._props) items.push({ y: pr.sortY, d: () => ctx.drawImage(pr.cv, pr.x, pr.y) });
-    TABLES.forEach(([tx, ty], i) => items.push({ y: (ty + 3) / S, d: () => this._drawTable(ctx, i, tx, ty) }));
+    // depth-sorted world objects: the few moving things, merged into the pre-sorted static scenery
+    const items = (this._items ||= []);
+    items.length = 0;
+    let o = 0;
+    for (const v of this._villagers) if (!v.inside && !v.gone) items.push({ y: v.y, o: o++, d: () => this._drawVillager(ctx, v) });
+    if (this._potOn()) items.push({ y: FIRE.y + 0.5, o: 1000, d: () => this._drawPot(ctx) });
+    if (this._screen > 0) items.push({ y: PROJ.y, o: 3000, d: () => this._drawProjector(ctx) });
+    if (this._mode === 'gaming' && this._screen > 0) items.push({ y: 112.6, o: 4000, d: () => this._drawConsole(ctx) });
     if (this._sign === 2) {
       const spr = a.sign;
-      items.push({ y: SIGN.base, d: () => ctx.drawImage(spr.cv, Math.round(SIGN.x * S) - spr.ax, Math.round(SIGN.base * S) - spr.by) });
+      items.push({ y: SIGN.base, o: 8000, d: () => ctx.drawImage(spr.cv, Math.round(SIGN.x * S) - spr.ax, Math.round(SIGN.base * S) - spr.by) });
     }
-    for (const an of this._animals) if (!an.hidden && !(an.type === 'bird' && an.state === 'fly')) items.push({ y: an.y, d: () => this._drawAnimal(ctx, an) });
+    o = 9000;
+    for (const an of this._animals) if (!an.hidden && !(an.type === 'bird' && an.state === 'fly')) items.push({ y: an.y, o: o++, d: () => this._drawAnimal(ctx, an) });
+    o = 10000;
     for (const v of this._villagers) {
       if (!v.parked) continue;
       const bk = (a.bike ||= makeParkedBike()), px = Math.round(v.parked.x * S), py = Math.round(v.parked.y * S);
-      items.push({ y: v.parked.y - 0.01, d: () => ctx.drawImage(bk.cv, px - bk.ax, py - bk.by) });
+      items.push({ y: v.parked.y - 0.01, o: o++, d: () => ctx.drawImage(bk.cv, px - bk.ax, py - bk.by) });
     }
-    items.sort((p, q) => p.y - q.y);
-    for (const it of items) it.d();
+    items.sort(byDepth);
+    const fixed = this._staticItems(this._landSnow);
+    for (let i = 0, j = 0; i < items.length || j < fixed.length;) {
+      if (j >= fixed.length || (i < items.length && byDepth(items[i], fixed[j]) < 0)) items[i++].d();
+      else fixed[j++].d();
+    }
     for (const an of this._animals) if (!an.hidden && an.type === 'bird' && an.state === 'fly') this._drawAnimal(ctx, an);
     this._drawParticles(ctx, 0);
 
@@ -3959,15 +4314,8 @@ class PixelVillageCard extends HTMLElement {
     // lights
     if (ph !== 'day') {
       // moon and stars stay bright after the night tint, but only where the sky shows
-      const ov = (this._skyOv ||= mk(RW, HZ + 10)), og = ov.getContext('2d');
-      og.globalCompositeOperation = 'source-over';
-      og.clearRect(0, 0, RW, HZ + 10);
-      this._drawStars(og);
-      if (ph === 'night') this._drawMoon(og);
-      og.globalCompositeOperation = 'destination-in';
-      og.drawImage(this._skyMask, 0, 0);
-      og.globalCompositeOperation = 'source-over';
-      ctx.drawImage(ov, 0, 0);
+      this._drawStars(ctx);
+      if (ph === 'night') this._drawMoon(ctx);
     }
     this._drawWindows(ctx, dark);
     this._drawCafeLights(ctx, dark);
@@ -3987,7 +4335,7 @@ class PixelVillageCard extends HTMLElement {
   }
 
   _seated(i) {
-    return this._villagers.find((v) => !v.walking && !v.inside && !v.gone && v.plan?.seat === i && ['laptop', 'sip'].includes(v.action));
+    return this._seats?.get(i);
   }
 
   _drawTable(ctx, i, tx, ty) {
@@ -4033,30 +4381,49 @@ class PixelVillageCard extends HTMLElement {
     if (Y > HZ + 10 || X < -20 || X > RW + 20) return;
     const low = this._phase !== 'day';
     this._glow(ctx, X, Y, 40, low ? '255,150,80' : '255,240,180', 0.35);
-    disc(ctx, X, Y, 11, low ? '#ff9a50' : '#ffe890');
-    disc(ctx, X - 1, Y - 1, 9, low ? '#ffc080' : '#fff6c8');
-    disc(ctx, X - 3, Y - 3, 4, '#ffffff');
+    const k = low ? 1 : 0, disk = ((this._sunSpr ||= [])[k] ||= (() => {
+      const c = mk(23, 23), g = c.getContext('2d');
+      disc(g, 11, 11, 11, low ? '#ff9a50' : '#ffe890');
+      disc(g, 10, 10, 9, low ? '#ffc080' : '#fff6c8');
+      disc(g, 8, 8, 4, '#ffffff');
+      return c;
+    })());
+    ctx.drawImage(disk, X - 11, Y - 11);
   }
 
   _drawMoon(ctx) {
     const p = ((this._hourNow - 18 + 24) % 24) / 13;
     if (p > 1 || this._weather.overcast) return;
     const X = Math.round((10 + p * (W - 20)) * S), Y = Math.round((50 - Math.sin(Math.max(0, Math.min(1, p)) * Math.PI) * 40) * S);
-    this._glow(ctx, X, Y, 34, '200,215,255', 0.28);
-    disc(ctx, X, Y, 9, '#d8d4c0');
-    disc(ctx, X - 1, Y - 1, 8, '#f6f2dc');
-    for (const [dx, dy, r] of [[-3, -2, 2], [3, 2, 1], [1, -4, 1], [-1, 4, 1]]) disc(ctx, X + dx, Y + dy, r, '#dcd6c0');
+    // moon and its glow, clipped to the sky; it only moves a pixel now and then, so cache it
+    const R = 34, key = `${X},${Y}`;
+    if (!this._moonSpr || this._moonKey !== key) {
+      const c = (this._moonSpr ||= mk(R * 2, R * 2)), g = c.getContext('2d');
+      g.globalCompositeOperation = 'source-over';
+      g.clearRect(0, 0, R * 2, R * 2);
+      g.globalAlpha = 0.28; g.drawImage(glowSprite(R, '200,215,255'), 0, 0); g.globalAlpha = 1;
+      disc(g, R, R, 9, '#d8d4c0');
+      disc(g, R - 1, R - 1, 8, '#f6f2dc');
+      for (const [dx, dy, r] of [[-3, -2, 2], [3, 2, 1], [1, -4, 1], [-1, 4, 1]]) disc(g, R + dx, R + dy, r, '#dcd6c0');
+      g.globalCompositeOperation = 'destination-in';
+      g.drawImage(this._skyMask, X - R, Y - R, R * 2, R * 2, 0, 0, R * 2, R * 2);
+      g.globalCompositeOperation = 'source-over';
+      this._moonKey = key;
+    }
+    ctx.drawImage(this._moonSpr, X - R, Y - R);
   }
 
   _drawStars(ctx) {
     if (this._weather.overcast) return;
     const a = this._phase === 'night' ? 1 : 0.35;
-    for (const s of this._stars) {
+    ctx.fillStyle = '#ffffeb';
+    for (const s of this._visStars || []) {
       const tw = 0.55 + 0.45 * Math.sin(this._t * 2 + s.p * 5);
-      ctx.fillStyle = `rgba(255,255,235,${(s.b * tw * a).toFixed(2)})`;
+      ctx.globalAlpha = Math.round(s.b * tw * a * 20) / 20;
       ctx.fillRect(s.x, s.y, 1, 1);
       if (s.big && tw > 0.8) { ctx.fillRect(s.x - 1, s.y, 3, 1); ctx.fillRect(s.x, s.y - 1, 1, 3); }
     }
+    ctx.globalAlpha = 1;
   }
 
   _drawClouds(ctx) {
@@ -4238,19 +4605,22 @@ class PixelVillageCard extends HTMLElement {
   }
 
   _partyStrings() {
-    const [l0, l1] = LAMPS, tv = HOUSES[2].g;
-    return [[[l0[0], l0[1] - 40], [l1[0], l1[1] - 40]], [[l0[0], l0[1] - 40], [tv.X - 4, tv.top + 6]], [[tv.X + tv.Wd + 4, tv.top + 6], [l1[0], l1[1] - 40]]]
-      .map(([[x0, y0], [x1, y1]]) => {
-        const pts = [], n = Math.max(2, Math.round(Math.abs(x1 - x0) / 4));
-        for (let i = 0; i <= n; i++) {
-          const u = i / n;
-          pts.push([Math.round(x0 + (x1 - x0) * u), Math.round(y0 + (y1 - y0) * u + Math.sin(u * Math.PI) * 14)]);
-        }
-        return pts;
-      });
+    return getPartyStrings();
   }
 
+  // The bunting never changes: paint it once into a full-size layer and reuse it.
   _drawBunting(ctx) {
+    if (!this._buntingSpr) {
+      const pts = this._partyStrings().flat(), xs = pts.map((q) => q[0]), ys = pts.map((q) => q[1]);
+      const x0 = Math.min(...xs) - 4, y0 = Math.min(...ys) - 2, c = mk(Math.max(...xs) - x0 + 10, Math.max(...ys) - y0 + 10), g = c.getContext('2d');
+      g.translate(-x0, -y0);
+      this._paintBunting(g);
+      this._buntingSpr = { c, x0, y0 };
+    }
+    ctx.drawImage(this._buntingSpr.c, this._buntingSpr.x0, this._buntingSpr.y0);
+  }
+
+  _paintBunting(ctx) {
     const cols = ['#e04848', '#f0c040', '#40a0e0', '#50c060', '#e070c0'];
     this._partyStrings().forEach((pts) => {
       pts.forEach(([x, y], i) => {
@@ -4316,7 +4686,8 @@ class PixelVillageCard extends HTMLElement {
       if (dark && this._mode !== 'away') rects.push([h.lantern.x - 2, h.lantern.y, 5, 7, h.base]);
     });
     // people in front of the fire are lit by it, so they get a warm tint rather than the plain night one
-    const warm = tint ? mixHex(tint, '#ffd8a8', 0.6) : null;
+    if (this._warm === undefined || this._warmFor !== tint) { this._warmFor = tint; this._warm = tint ? mixHex(tint, '#ffd8a8', 0.6) : null; }
+    const warm = this._warm;
     if (this._fireLevel() >= 2) rects.push([FIRE.x * S - 14, FIRE.y * S - 36, 29, 40, FIRE.y + 0.3, warm]);
     if (dark) {
       for (const [lx, ly] of LAMPS) rects.push([lx - 3, ly - 38, 7, 7, ly / S]);
@@ -4329,7 +4700,7 @@ class PixelVillageCard extends HTMLElement {
       const x = Math.round(v.x * S) - AX, y = Math.round(v.y * S) - FY - this._lift(v) * S;
       const hit = hits(x, y, SW, SH, v.y);
       if (!hit) continue;
-      const { pose, frame } = this._poseOf(v), spr = v.sprites.get(`${pose}|${frame}|${v.carry || ''}|${v.gear ? 1 : 0}`);
+      const spr = this._spriteOf(v, false);
       if (spr) this._drawTinted(ctx, spr.cv, x, y, v.face < 0, hit[5] === undefined ? tint : hit[5]);
     }
     for (const a of this._animals) {
@@ -4370,15 +4741,21 @@ class PixelVillageCard extends HTMLElement {
       const u = dx / (hw + 1);
       const wob = 0.62 + 0.38 * Math.sin(t * 11 + dx * 0.9) * Math.sin(t * 7.3 + dx * 0.4);
       const hc = Math.round(maxH * Math.pow(1 - u * u, 0.9) * wob * (0.85 + 0.15 * Math.random()));
-      for (let i = 0; i < hc; i++) {
-        const v = i / maxH, inner = Math.abs(u) / Math.max(0.15, 1 - v * 0.9);
-        let c;
-        if (i >= hc - 2) c = '#d83a18';
-        else if (inner < 0.35 && v < 0.55) c = '#fff6c8';
-        else if (inner < 0.7 && v < 0.78) c = '#ffc038';
-        else c = '#ff7a20';
-        ctx.fillStyle = c;
-        ctx.fillRect(cx + dx, by - 3 - i, 1, 1);
+      // colours only change a few times up a column, so fill each run of one colour at once
+      let run = null, from = 0;
+      for (let i = 0; i <= hc; i++) {
+        let c = null;
+        if (i < hc) {
+          const v = i / maxH, inner = Math.abs(u) / Math.max(0.15, 1 - v * 0.9);
+          if (i >= hc - 2) c = '#d83a18';
+          else if (inner < 0.35 && v < 0.55) c = '#fff6c8';
+          else if (inner < 0.7 && v < 0.78) c = '#ffc038';
+          else c = '#ff7a20';
+        }
+        if (c !== run) {
+          if (run) { ctx.fillStyle = run; ctx.fillRect(cx + dx, by - 2 - i, 1, i - from); }
+          run = c; from = i;
+        }
       }
     }
     if (!pot && Math.random() < 0.6) P(ctx, cx + Math.round(rand(-5, 5)), by - maxH - Math.round(rand(2, 8)), 2, 2, '#ff9a30');
@@ -4419,6 +4796,7 @@ class PixelVillageCard extends HTMLElement {
     for (const d of this._drops) {
       const x = Math.round(d.x * S), y = Math.round(d.y * S);
       if (d.snow) { P(ctx, x, y, 2, 2, '#ffffff'); P(ctx, x + 1, y + 1, 1, 1, '#c8d4ec'); }
+      else if (d.hail) { P(ctx, x, y, 2, 2, '#f4f8ff'); P(ctx, x + 1, y + 1, 1, 1, '#a8b8d8'); P(ctx, x, y - 3, 1, 2, 'rgba(220,230,250,0.5)'); }
       else P(ctx, x, y, 1, 6, dark ? 'rgba(160,180,230,0.55)' : 'rgba(190,215,245,0.7)');
     }
     for (const s of this._splashes || []) {
@@ -4427,11 +4805,13 @@ class PixelVillageCard extends HTMLElement {
       ctx.fillRect(x - 2, y - 1, 1, 1); ctx.fillRect(x + 2, y - 1, 1, 1); ctx.fillRect(x - 1, y, 3, 1);
     }
     if (w.fog) {
-      for (let i = 0; i < 5; i++) {
-        const y = 120 + i * 42 + Math.round(Math.sin(this._t * 0.3 + i) * 6);
-        ctx.fillStyle = 'rgba(225,230,238,0.16)';
-        ctx.fillRect(0, y, RW, 30); ctx.fillRect(0, y + 6, RW, 18);
-      }
+      const strip = (this._fogSpr ||= (() => {
+        const c = mk(RW, 30), g = c.getContext('2d');
+        g.fillStyle = 'rgba(225,230,238,0.16)';
+        g.fillRect(0, 0, RW, 30); g.fillRect(0, 6, RW, 18);
+        return c;
+      })());
+      for (let i = 0; i < 5; i++) ctx.drawImage(strip, 0, 120 + i * 42 + Math.round(Math.sin(this._t * 0.3 + i) * 6));
     }
     if (this._flash > 0) {
       if (!this._bolt) {
@@ -4472,6 +4852,12 @@ class PixelVillageCard extends HTMLElement {
   }
 
   _poseOf(v) {
+    if (v._poseFrame === this._frameNo && v._pose) return v._pose;
+    v._poseFrame = this._frameNo;
+    return (v._pose = this._computePose(v));
+  }
+
+  _computePose(v) {
     const act = v.walking ? 'walk' : v.action;
     let pose;
     if (v.bike) {
@@ -4495,6 +4881,19 @@ class PixelVillageCard extends HTMLElement {
     return { pose, frame: order[step], step };
   }
 
+  // A villager's sprite for this frame: built on first use, kept in a small per-person cache.
+  _spriteOf(v, build) {
+    const { pose, frame } = this._poseOf(v);
+    const key = `${pose}|${frame}|${v.carry || ''}|${v.gear ? 1 : 0}`;
+    let spr = v.sprites.get(key);
+    if (!spr && build) {
+      if (v.sprites.size >= SPRITE_CACHE_MAX) v.sprites.delete(v.sprites.keys().next().value);
+      spr = buildVillager(v, pose, frame, v.carry, v.gear);
+      v.sprites.set(key, spr);
+    }
+    return spr;
+  }
+
   _lift(v) {
     const { pose, step } = this._poseOf(v);
     let lift = LIFT[pose] ? LIFT[pose][step % 4] : 0;
@@ -4504,13 +4903,7 @@ class PixelVillageCard extends HTMLElement {
   }
 
   _drawVillager(ctx, v) {
-    const { pose, frame } = this._poseOf(v);
-    const key = `${pose}|${frame}|${v.carry || ''}|${v.gear ? 1 : 0}`;
-    let spr = v.sprites.get(key);
-    if (!spr) {
-      spr = buildVillager(v, pose, frame, v.carry, v.gear);
-      v.sprites.set(key, spr);
-    }
+    const spr = this._spriteOf(v, true);
     const x = Math.round(v.x * S), y = Math.round(v.y * S);
     ctx.fillStyle = 'rgba(16,16,40,0.3)';
     ctx.fillRect(x - 5, y - 1, 11, 3); ctx.fillRect(x - 7, y, 15, 1);
@@ -4518,12 +4911,14 @@ class PixelVillageCard extends HTMLElement {
     if (v.face > 0) ctx.drawImage(spr.cv, sx, sy);
     else {
       // mirror at draw time instead of caching a flipped copy of every frame
-      ctx.save(); ctx.translate(sx + SW, sy); ctx.scale(-1, 1); ctx.drawImage(spr.cv, 0, 0); ctx.restore();
+      ctx.setTransform(-1, 0, 0, 1, sx + SW, sy); ctx.drawImage(spr.cv, 0, 0); ctx.setTransform(1, 0, 0, 1, 0, 0);
     }
     if ((this._t + v.seed * 7) % 4 < 0.15) {
-      const ex = v.face > 0 ? sx + spr.eyeX : sx + SW - 2 - spr.eyeX;
-      P(ctx, ex, sy + spr.eyeY, 2, 2, v.look.skin);
-      P(ctx, ex, sy + spr.eyeY + 1, 2, 1, ramp(v.look.skin).o);
+      for (const [x, y] of spr.eyes) {
+        const ex = v.face > 0 ? sx + x : sx + SW - 2 - x;
+        P(ctx, ex, sy + y, 2, 2, v.look.skin);
+        P(ctx, ex, sy + y + 1, 2, 1, skinRamp(v.look.skin).d);
+      }
     }
   }
 
@@ -4538,6 +4933,7 @@ if (!customElements.get('pixel-village-card')) {
     name: 'Pixel Village',
     description: 'A tiny pixel-art village that lives along with your home.',
     preview: true,
+    documentationURL: 'https://github.com/frankdeluxe5k/pixel-village-card',
   });
   console.info(`%c PIXEL-VILLAGE-CARD %c v${PV_VERSION} `, 'background:#3f9a50;color:#fff;border-radius:3px 0 0 3px', 'background:#2c3a70;color:#fff;border-radius:0 3px 3px 0');
 }

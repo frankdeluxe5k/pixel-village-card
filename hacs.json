@@ -1,5 +1,6 @@
 {
   "name": "Pixel Village Card",
   "filename": "pixel-village-card.js",
+  "homeassistant": "2024.11.0",
   "render_readme": true
 }

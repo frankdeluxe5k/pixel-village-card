@@ -4,6 +4,9 @@ A tiny living pixel-art village for your Home Assistant dashboard. Villagers wak
 farm, chop wood, haul water, gather round the campfire, throw parties and go to bed, all following
 your home's clock, the weather, and whatever is happening in your house.
 
+![A sunny day in the village](images/village-day.png)
+![A party night with the band, string lights and the campfire](images/village-party.png)
+
 - **16-bit arcade look.** Chunky outlined sprites, hue-shifted shading, dithered skies, shingled
   chalets, snow-capped mountains, all drawn procedurally at 672×378 in the spirit of SNES / Neo Geo art.
 - **Reacts to your home.** Scenes, scripts, automations, buttons, switches, media players, people,
@@ -11,11 +14,23 @@ your home's clock, the weather, and whatever is happening in your house.
 - **Visual editor.** Set everything up from the card's configuration screen, with suggestions based on
   what's in your Home Assistant. No YAML needed (but YAML works too).
 - **Single file, zero dependencies.** It's a dashboard card that runs in the browser, so your Home
-  Assistant box only serves one ~190 KB file. No add-on, no container, no polling.
-- **Efficient.** Scenery and sprites are drawn once and cached; animating costs ≈1.5 ms per frame at
-  15 fps, and it stops completely when the card is off screen or the tab is hidden.
+  Assistant box only serves one ~230 KB file. No add-on, no container, no polling, no network requests.
+- **Light enough for wall tablets.** Scenery, glows and sprites are drawn once and cached, so a frame
+  takes about a millisecond on a desktop. Startup work is spread over several frames. It stops completely when
+  the card is off screen or the tab is hidden, drops to 10 fps by itself on a device that can't keep
+  up, and several village cards on one page share their scenery.
 
 ## Install
+
+Requires Home Assistant 2024.11 or newer.
+
+### HACS (recommended)
+1. In HACS → ⋮ → **Custom repositories**, add `https://github.com/frankdeluxe5k/pixel-village-card`
+   as type **Dashboard**. Or use this link:
+   [![Open in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=frankdeluxe5k&repository=pixel-village-card&category=plugin)
+2. Download **Pixel Village Card**. HACS adds the dashboard resource for you
+   (`/hacsfiles/pixel-village-card/pixel-village-card.js`) and tells you when there's an update.
+3. Edit a dashboard → **Add card** → search for **Pixel Village**.
 
 ### Manual
 1. Copy `pixel-village-card.js` to `/config/www/pixel-village-card.js`.
@@ -24,9 +39,8 @@ your home's clock, the weather, and whatever is happening in your house.
    (Bump `?v=` whenever you update the file so browsers pick up the new version.)
 3. Edit a dashboard → **Add card** → search for **Pixel Village**.
 
-### HACS
-In HACS → ⋮ → **Custom repositories**, add this repository as type **Dashboard** and install it.
-(For a private repository HACS needs a GitHub token with access to it.)
+Nothing else to set up: the card finds your weather entity and the sun on its own, and follows your
+time zone (your profile's "local" or "server" time zone setting is respected).
 
 ## Setting it up
 
@@ -132,14 +146,16 @@ daily routine. Reactions take priority over the mood helper.
 ## The village
 
 Six chalets along a cobbled main road and dirt paths, a fire square with benches and lamps, a café with
-umbrella tables and a coffee cart, a rustic amphitheater, a pond, and a farm behind the well.
+umbrella tables and a coffee cart, a rustic amphitheater, a pond, a farm at the back and a well behind
+the tavern.
 
 - **Residents:** a farmer, cook, woodcutter, water carrier, bard and a kid (more if you raise the count).
 - **Visitors** wander in by the east road or the west lane, sightsee, grab a coffee, sit by the fire and
   leave again. More turn up for evenings, movie nights and parties; nobody visits at night.
 - **The mail carrier** cycles in every few minutes during the day, parks at two or three houses and
   walks a letter (or sometimes a parcel) to the door.
-- **A travelling band** (drum, fiddle, accordion and horn) arrives for parties and plays behind the fire.
+- **A travelling band** of young rockers (drums, bass and two guitars) arrives for parties and plays in
+  front of the tavern.
 - **Animals:** two dogs follow their owners and nap by the door at night, a cat lounges about and bolts
   from the dogs, birds flock and peck, and rabbits and squirrels scatter when anyone comes close.
 
@@ -151,8 +167,8 @@ umbrella tables and a coffee cart, a rustic amphitheater, a pond, and a farm beh
 | `villagers` | `6` | Residents, 1–10 |
 | `visitors` | `true` | Visitors, the mail carrier and the party band |
 | `animals` | `true` | Dogs, cat, birds, rabbits and squirrels |
-| `weather_entity` | first `weather.*` | Set `false` to turn weather off. Rain, storms, snow, fog and clouds are drawn; heavy rain sends workers indoors |
-| `sun_entity` | `sun.sun` | Drives dawn, day, dusk, night and the sun's position |
+| `weather_entity` | first `weather.*` | Set `false` to turn weather off. Every Home Assistant condition is drawn: sun, clear night, clouds, wind, fog, rain, pouring rain, lightning, thunderstorms, hail, snow and sleet. Heavy rain, hail and storms send workers indoors |
+| `sun_entity` | `sun.sun` | Drives dawn, day, dusk, night and the sun's position. Without it the clock decides |
 | `mode_entity` | none | Mood helper (`input_select`, `select` or `input_text`) |
 | `schedule` | 06:30 wake, 08:30 work, 12:00 lunch, 13:00 work, 18:00 dinner, 19:30 evening, 22:30 sleep | `"HH:MM"` strings |
 | `triggers` | `[]` | Reactions, see above |
@@ -167,4 +183,12 @@ some z's float out.
 
 ## Preview
 
-Open `demo.html` in a browser for a time slider, time-lapse, mood buttons and weather.
+Open `demo.html` in a browser for a time slider, time-lapse, mood buttons and every weather condition.
+
+## Troubleshooting
+
+- **Config errors** (an unknown mood, a misspelled condition, a bad time) show up in the card editor and
+  on the card itself, saying which reaction or setting is wrong.
+- **An entity in your config doesn't exist?** The card ignores it and logs a warning in the browser
+  console (`pixel-village-card: these entities don't exist…`).
+- **Manual install not updating?** Bump the `?v=` on the resource URL.

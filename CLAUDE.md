@@ -5,7 +5,7 @@ follow a daily routine, visitors come and go, animals wander, and the whole scen
 day, the weather, the season and whatever is happening in the user's home (scenes, scripts, any entity).
 It's meant to be shared and to work across many different Home Assistant setups, not just one.
 
-Repo: `github.com/frankdeluxe5k/pixel-village-card` (private). Commit as `frankdeluxe5k`
+Repo: `github.com/frankdeluxe5k/pixel-village-card` (private; going public for HACS). Commit as `frankdeluxe5k`
 (`89476351+frankdeluxe5k@users.noreply.github.com`). Only commit or push when the user asks.
 
 ## Files
@@ -15,15 +15,31 @@ Repo: `github.com/frankdeluxe5k/pixel-village-card` (private). Commit as `frankd
 - `demo.html` — standalone preview: time slider, time-lapse, mood buttons, weather, season. Drives the card
   with a fake `hass` and `card.previewHour` / `card.previewSeason`. Also published as a claude.ai artifact.
 - `README.md` — user docs (install, editor, reaction conditions, YAML, moods, options).
-- `hacs.json` — HACS metadata (type Dashboard).
+- `hacs.json` — HACS metadata (type Dashboard / category `plugin`, minimum HA 2024.11 for `getGridOptions`).
+- `LICENSE` (MIT), `images/` (README screenshots, rendered from the demo), `.github/workflows/validate.yml`
+  (`hacs/action` + `node --check`). HACS only works with public repos and wants a GitHub release, a repo
+  description, topics and issues enabled; keep `PV_VERSION` equal to the release tag.
 
 ## Hard requirements
 
-- **Lightweight.** It's shown on dashboards on a Raspberry Pi 5. The card runs in the browser; HA only serves
-  the file. Keep frame cost low (currently ~2 ms/frame at 15 fps) and memory small (~1 MB sprite cache).
+- **Lightweight.** It's shown on dashboards on a Raspberry Pi 5 and old wall tablets. The card runs in the
+  browser; HA only serves the file. Measured with CPU throttled 6× (a weak tablet): 2–3 ms/frame by day,
+  ~7 ms for a night party; about 6 MB of canvases per card (land/houses/glows shared between cards).
   - Draw sprites/scenery once into offscreen canvases and cache them; per-frame work is mostly `drawImage`.
-  - Left-facing sprites are mirrored at draw time, not cached twice.
-  - The loop stops when the card is off screen (IntersectionObserver) or the tab is hidden.
+    Never create gradients, rgba strings or per-pixel `fillRect` loops per frame: glows are cached sprites
+    (`glowSprite`), the fire fills colour runs, stars use `globalAlpha`, bunting/sun/moon/fog are cached.
+  - Static depth items (houses, props, tables, stage) are pre-sorted once (`_staticItems`) and merged with
+    the moving ones each frame; `_poseOf` is cached per frame; café seats are a per-frame map.
+  - Left-facing sprites are mirrored at draw time with `setTransform`, not cached twice. Each villager keeps
+    at most `SPRITE_CACHE_MAX` sprites; guests drop theirs when they leave.
+  - Land is built by the `buildLandSteps` generator a few ms per frame (`sharedLand(snow, season, budget)`),
+    shared by all cards, with green and snowy variants both kept. `buildLand()` still builds it in one go.
+  - The loop stops when the card is off screen (IntersectionObserver), disconnected or the tab is hidden; a
+    loop id guards against duplicate loops. `_pace` drops to 10 fps if frames run long.
+- **Home Assistant etiquette.** `set hass` only re-evaluates when an entity the card uses changed
+  (`_watched`); listeners are added in `connectedCallback` and removed in `disconnectedCallback`; config
+  errors throw clear messages (`validateConfig`); the editor ignores its own echoed config (`_emitted`) so it
+  never rebuilds while the user types; time follows `hass.locale.time_zone` ("local" = browser).
 - **Depth must be correct.** Anything standing behind something must be drawn behind it. This has been a
   recurring complaint; check it whenever adding art or movement (see "Depth and lighting" below).
 
@@ -65,7 +81,9 @@ Repo: `github.com/frankdeluxe5k/pixel-village-card` (private). Commit as `frankd
 - Standard custom card: `setConfig`, `set hass`, `getCardSize`, `getGridOptions`, `getStubConfig`,
   `getConfigElement`, registered in `window.customCards`.
 - Time comes from `hass.config.time_zone`; dawn/day/dusk/night from `sun.sun` (elevation/azimuth/rising).
-- Weather from `weather_entity` or the first `weather.*`.
+- Weather from `weather_entity` or the first `weather.*`. `readWeather()` maps every HA condition (sunny,
+  clear-night, partlycloudy, cloudy, windy, windy-variant, fog, rainy, pouring, lightning, lightning-rainy,
+  hail, snowy, snowy-rainy, exceptional); keep it complete if HA adds conditions.
 - **Mood resolution** (`_updateMode`): first matching reaction (`triggers`) → else `mode_entity` (an
   input_select/select whose state is a mood name) → else the daily schedule.
   - Reaction conditions (`when`): `activated` (scenes/buttons/events use their timestamp state,
@@ -92,7 +110,8 @@ Repo: `github.com/frankdeluxe5k/pixel-village-card` (private). Commit as `frankd
   tavern, dirt paths to each house, a west lane out the left edge, and worn footpaths to the well/farm, café
   and amphitheater. Villagers and animals walk this network (`route()`), never through `FOOTPRINTS`.
 - Fire square with flagstones, stone-ringed fire pit, benches and two street lamps; pond with lilies.
-- Farm and well at the back centre (drawn smaller to read as distance), scarecrow, haystack.
+- Farm at the back centre (drawn smaller to read as distance), scarecrow, small haystack at its left end;
+  well behind and right of the tavern.
 - Café at the front right: brick patio, four umbrella tables with stools, coffee cart (cook is barista).
 - Amphitheater at the front left: low turf terraces with fieldstone faces and log benches, painted onto
   the ground (no outline); a small rustic screen panel turned ~45° toward the seats, partly off the left
@@ -105,7 +124,9 @@ Repo: `github.com/frankdeluxe5k/pixel-village-card` (private). Commit as `frankd
   controllers to a console on the deck, handhelds at the café), cozy (everyone indoors), away (backpacks and
   walking sticks, last one out hangs "BACK SOON!" on the coffee cart).
 - People: 6 residents by default (farmer, cook, woodcutter, water carrier, bard, kid), 8 visitors who come
-  and go, a mail carrier on a red bicycle (letters or, randomly, parcels), a 4-piece band for parties.
+  and go, a mail carrier on a red bicycle (letters or, randomly, parcels), a 4-piece band for parties:
+  young garage-rock kids (drums, bass, two guitars; swoopy/spiky hair, tees, flannel, stripes, studded
+  belts, white-soled sneakers) playing in front of the tavern, above the string lights over the square.
   Animals: 2 dogs (follow owners, nap at their door), a cat, birds (land only on open ground or roof ridges),
   rabbits, squirrels.
 
@@ -117,8 +138,8 @@ Render order in `_render`:
 2. Depth-sorted items by simulation `y`: villagers, animals (non-flying), houses (`y = base + 0.3`), props and
    trees (`sortY` = their ground line), stage, tables, sign, parked bike, console.
 3. Flying birds, then the night tint (`multiply` over everything).
-4. Lights after the tint: windows, lanterns, street lamps, fire, film, party lights. Moon and stars go
-   through `_skyMask` so the mountains cover them.
+4. Lights after the tint: windows, lanterns, street lamps, fire, film, party lights. Stars hidden by the
+   mountains are dropped once (`_visStars`); the cached moon sprite is clipped by `_skyMask`.
 5. `_redrawInFrontOfLights`: anyone (villagers and animals) standing in front of a lit window, lantern,
    lamp or the fire is redrawn on top with the matching tint (warm tint near the fire), so lights never show
    through them.
@@ -134,6 +155,10 @@ Rules learned the hard way:
 
 - 16-bit SNES / Neo Geo look, Metal Slug as the influence: chunky dark outlines, hue-shifted shading, dense
   detail. Don't make houses or people too small (camera was pulled back once, ~15%, and that's the limit).
+- Faces (Stardew Valley / modern indie as the reference): 3/4 head with a jaw and chin, two eyes (white +
+  dark lid pixel + iris colour), brows, shaded nose, mouth. Per-person traits from `faceOf(v)` (eye, iris,
+  brow, mouth, nose, blush, freckles, glasses, mustache) drawn by `drawHead`. Skin uses `skinRamp()`, not
+  `ramp()` (the hue-shifted ramp turned light skin red). Avoid generic round faces and big cheek spots.
 - Characters: chibi, detailed faces/outfits, multi-frame keyframed animations (6-frame walk, 4-frame
   actions, rest/lift/sip rhythms, idle breathing). Animation frames are fine as long as sprites stay cached.
 - Mountain-chalet houses; the user likes the stone, the shingle roofs ("thatch"), and the chimneys.
@@ -153,6 +178,12 @@ Rules learned the hard way:
 - Movie night with lawn chairs carried from home in the open; then movie night at the café. Now the
   amphitheater.
 - Farm on the left front — moved to the back centre.
+- Farm and haystack reaching behind the blue house (villagers working there were hidden by its roof) —
+  the farm now starts right of that house, a small haystack sits just left of the farm, and the well is
+  behind and right of the tavern (brown house). Goal: a tidy village; the clutter comes from people,
+  animals and weather.
+- Barbershop-quartet band (boaters, fiddle/accordion/horn) standing in line with the string lights —
+  replaced by the rock band set back in front of the tavern.
 - Amphitheater versions: a big red velvet curtained stage (gaudy); large outlined stone tiers (looked like a
   sticker, overlapped the road); a flat front-facing screen; a first "45°" attempt that only stretched one
   edge taller; uneven diagonals. Now: small rustic panel, sheared toward the seats with 2:1 stairs.
@@ -166,8 +197,14 @@ Rules learned the hard way:
   mood transitions (movie/away flows); "walls" (sample walking villagers, assert `!blocked(x, y)`); animal
   validity (nobody above `HORIZON + 3` or inside footprints); pixel probes for window/fire overlap; the
   reaction engine with fake states (`evalReactions`, `suggestReactions`).
-- Real Home Assistant: `uv venv --python 3.13` + `uv pip install homeassistant` (2026.2 worked) with the
-  `demo:` integration plus a few scenes/scripts/helpers; onboard via `/api/onboarding/*`, add the resource
+- Deterministic before/after checks: a bench page that seeds `Math.random`, fakes `performance.now`, steps
+  `_update` without rendering, then renders one frame — lets you pixel-diff a refactor against the old file.
+  Throttle with CDP `Emulation.setCPUThrottlingRate` (6×) and force a flush (`getImageData(0,0,1,1)`) when
+  timing `_render`, or you only measure command recording.
+- Real Home Assistant: `uv venv --python 3.13` + `uv pip install homeassistant pymicro-vad pyspeex-noise`
+  (2026.2 worked; without those two the frontend hangs on "Loading data"). Don't use `demo:` (broken deps
+  stall `get_services`); use a template weather driven by an `input_text`, plus a few scenes/scripts/helpers;
+  dashboard url_paths need a hyphen; onboard via `/api/onboarding/*`, add the resource
   and a dedicated storage dashboard over the websocket API (`/lovelace` redirects to the new Home dashboard
   in 2026). Log the browser in by putting `hassTokens` in localStorage. In edit mode, card changes need the
   dialog's Save; then read back with `lovelace/config`.
