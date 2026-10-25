@@ -190,6 +190,11 @@ function clearPath(x0, y0, x1, y1) {
   for (let i = 1; i < n; i++) if (blocked(x0 + ((x1 - x0) * i) / n, y0 + ((y1 - y0) * i) / n)) return false;
   return true;
 }
+function freeSpot(x, y) {
+  for (let k = 0; k < 12 && blocked(x, y); k++) y += 1;
+  return [x, y];
+}
+
 function route(x0, y0, x1, y1) {
   if (clearPath(x0, y0, x1, y1)) return [[x1, y1]];
   const { nodes, adj } = NAV;
@@ -1075,6 +1080,27 @@ function animalSprite(type, variant, pose, frame) {
 const CAT_SPOTS = [[86, 104], [74, 120], [110, 121], [188, 117], [70, 84], [130, 84], [60, 102], [204, 110]];
 const RABBIT_ZONES = [[134, 64, 166, 75], [112, 117, 122, 125], [2, 96, 14, 101]];
 const TREE_BASES = [[40, 72], [134, 70], [160, 70], [88, 64], [221, 106]];
+// Where birds may land. Ground spots are in the open village; roof spots sit on a ridge and are drawn
+// just in front of that house (y is the house's ground line, alt lifts the bird up to the ridge).
+function birdSpot() {
+  const r = Math.random();
+  if (r < 0.3) {
+    const h = pick(HOUSES), x = (h.g.X + 8 + Math.random() * (h.g.Wd - 16)) / S;
+    return { x, y: h.base + 0.35, alt: (h.g.bot - h.g.ridge + 3) / S };
+  }
+  const ground = [
+    () => [FIRE.x + rand(-22, 22), FIRE.y + rand(-6, 9)],
+    () => [rand(52, 62), rand(68, 74)], () => [rand(78, 87), rand(68, 74)],
+    () => [rand(140, 166), rand(108, 124)],
+    () => [rand(176, 214), rand(110, 125)],
+  ];
+  for (let k = 0; k < 6; k++) {
+    const [x, y] = pick(ground)();
+    const pond = ((x * S - POND.x) / (POND.rx + 4)) ** 2 + ((y * S - POND.y) / (POND.ry + 4)) ** 2 < 1;
+    if (!blocked(x, y) && !pond) return { x, y, alt: 0 };
+  }
+  return { x: FIRE.x, y: FIRE.y + 8, alt: 0 };
+}
 
 // Instruments for the travelling band.
 function drawInstrument(g, kind, hf, hb, frame, tt, hy) {
@@ -1144,56 +1170,217 @@ function buildRider(v, frame, carry) {
   return { cv: c, eyeX: AX + 3, eyeY: hy + 5, top: hy - 6 };
 }
 
-/* ---------- scenery ---------- */
+/* ---------- foliage: Colorado Front Range trees and shrubs ---------- */
 
-function disc(g, cx, cy, r, c) {
-  ellipse(g, cx, cy, r, r, c);
+function seasonOf(d = new Date()) {
+  const m = d.getMonth(), day = d.getDate();
+  if (m === 11 || m <= 1 || (m === 2 && day < 20) || (m === 10 && day > 10)) return 'winter';
+  if ((m === 8 && day >= 20) || m === 9 || m === 10) return 'fall';
+  if (m <= 4) return 'spring';
+  return 'summer';
 }
 
-function makeTree(rw, seed, snow) {
-  const R = rw * S + 1, trunkH = 13;
-  const w = R * 2 + 10, h = R * 2 + trunkH + 8;
-  const c = mk(w, h), g = c.getContext('2d'), rnd = mulberry32(seed);
-  const cx = w >> 1, by = h - 2, ccy = by - trunkH - R + 3;
+const FOLIAGE = {
+  spruce: ['#1c3436', '#2a4c52', '#3c6668', '#57847f', '#88b0a8'],
+  pine: ['#18301c', '#264826', '#386430', '#50803c', '#72a04e'],
+  aspen: {
+    spring: ['#2e5a24', '#44802e', '#62a23c', '#88c450', '#bce47c'],
+    summer: ['#24502a', '#346e32', '#4e8e3c', '#70ae4c', '#9ccc66'],
+    fall: ['#6a3c0c', '#a86a14', '#d8a020', '#f4c838', '#fff08a'],
+  },
+  gambel: {
+    spring: ['#26461e', '#386628', '#548a34', '#76aa46', '#a0cc66'],
+    summer: ['#22401e', '#325c28', '#4a7a34', '#66984a', '#8cb866'],
+    fall: ['#4a1e10', '#7a3016', '#a8481c', '#d0702a', '#eca450'],
+  },
+  juniper: ['#1a3430', '#28463e', '#3a5e52', '#527a6a', '#7c9c8c'],
+  sage: ['#566052', '#727c6a', '#909a86', '#b0b8a6', '#ced4c4'],
+  rabbit: ['#46523e', '#5e6c52', '#7a886a', '#98a684', '#b8c4a0'],
+  rose: ['#244a22', '#346a2e', '#4a8a3a', '#68a84c', '#90c868'],
+};
 
-  const bark = ramp('#6a4428'), tw = rw >= 6 ? 7 : 5, tx = cx - (tw >> 1);
-  P(g, tx, ccy, tw, by - ccy + 1, bark.m);
-  P(g, tx, ccy, 2, by - ccy + 1, bark.l);
-  P(g, tx + tw - 2, ccy, 2, by - ccy + 1, bark.d);
-  for (let i = 0; i < 6; i++) P(g, tx + 1 + Math.floor(rnd() * (tw - 2)), ccy + R * 0.6 + Math.floor(rnd() * (by - ccy - R * 0.6 - 3)), 1, 3, bark.o);
-  P(g, tx - 2, by - 1, tw + 4, 2, bark.m); P(g, tx - 2, by, tw + 4, 1, bark.d);
-
-  const leaf = (snow
-    ? ['#24443a', '#355e4c', '#4a7a5e', '#d4e0ee', '#ffffff']
-    : ['#1c4628', '#2c6630', '#40863a', '#5ca846', '#8ccc5e']).map(hexToRgb);
-  const cl = [{ x: cx, y: ccy, r: R * 0.66 }];
-  const n = 5 + Math.round(R / 3);
-  for (let i = 0; i < n; i++) {
-    const a = rnd() * Math.PI * 2, dd = Math.sqrt(rnd()) * R * 0.55;
-    cl.push({ x: cx + Math.cos(a) * dd * 1.1, y: ccy + Math.sin(a) * dd * 0.85, r: R * (0.3 + rnd() * 0.22) });
-  }
-  cl.sort((a, b) => a.y - b.y);
-  const lc = mk(w, h), lg = lc.getContext('2d'), im = lg.createImageData(w, h), d = im.data;
-  for (const k of cl) {
-    for (let y = Math.floor(k.y - k.r); y <= Math.ceil(k.y + k.r); y++) {
+// Shade overlapping leaf clusters lit from the upper left, in clean bands with a little dither.
+function paintClusters(w, h, clusters, pal, { seed = 1, noise = 0.3, spiky = 0, snow = false, gx = w / 2, gy = h / 2, gr = w / 2 } = {}) {
+  const c = mk(w, h), g = c.getContext('2d'), im = g.createImageData(w, h), d = im.data, cols = pal.map(hexToRgb);
+  const white = hexToRgb('#f4f8ff'), blue = hexToRgb('#cad8ea');
+  for (const k of [...clusters].sort((a, b) => a.y - b.y)) {
+    const ry = k.ry || k.r;
+    for (let y = Math.floor(k.y - ry); y <= Math.ceil(k.y + ry); y++) {
       for (let x = Math.floor(k.x - k.r); x <= Math.ceil(k.x + k.r); x++) {
         if (x < 0 || y < 0 || x >= w || y >= h) continue;
-        const nx = (x - k.x) / k.r, ny = (y - k.y) / k.r, d2 = nx * nx + ny * ny;
+        const nx = (x - k.x) / k.r, ny = (y - k.y) / ry, d2 = nx * nx + ny * ny;
         if (d2 > 1) continue;
-        const gx = (x - cx) / R, gy = (y - ccy) / R;
-        let v = 0.5 - 0.45 * (nx * 0.6 + ny * 0.8) - 0.4 * (gx * 0.6 + gy * 0.8) + (hash2(x, y, seed) - 0.5) * 0.3;
-        if (d2 > 0.72 && ny > -0.1) v -= 0.35;
-        let lvl = Math.max(0, Math.min(4, Math.floor(v * 4 + bayer(x, y) - 0.5)));
-        if (snow) lvl = ny < -0.2 && v > 0.45 ? (v > 0.7 ? 4 : 3) : Math.min(lvl, 2);
-        const i = (y * w + x) * 4, col = leaf[lvl];
+        if (spiky && d2 > 0.55 && hash2(x, y, seed) < spiky) continue;
+        let v = 0.5 - 0.42 * (nx * 0.6 + ny * 0.8) - 0.3 * (((x - gx) / gr) * 0.6 + ((y - gy) / gr) * 0.8) + (hash2(x, y, seed + 1) - 0.5) * noise;
+        if (d2 > 0.7 && ny > -0.1) v -= 0.3;
+        const lvl = Math.max(0, Math.min(4, Math.floor(v * 5 + bayer(x, y) - 0.5)));
+        let col = cols[lvl];
+        if (snow && ny < -0.2 && v > 0.42) col = v > 0.62 ? white : blue;
+        const i = (y * w + x) * 4;
         d[i] = col[0]; d[i + 1] = col[1]; d[i + 2] = col[2]; d[i + 3] = 255;
       }
     }
   }
-  lg.putImageData(im, 0, 0);
-  g.drawImage(lc, 0, 0);
-  outline(c, snow ? '#1a2630' : '#10261a');
+  g.putImageData(im, 0, 0);
+  return c;
+}
+
+// Colorado blue spruce: tiers of drooping, silvery blue-green boughs.
+function drawSpruce(size, seed, snow) {
+  const H = Math.round(size * S * 3.3), W = Math.round(size * S * 1.7), w = W + 8, h = H + 10;
+  const c = mk(w, h), g = c.getContext('2d'), im = g.createImageData(w, h), d = im.data;
+  const cols = FOLIAGE.spruce.map(hexToRgb), white = hexToRgb('#f4f8ff'), blue = hexToRgb('#c4d4e8');
+  const cx = w >> 1, top = 2, tiers = 6 + Math.round(size / 2), th = H / tiers;
+  for (let y = top; y < top + H; y++) {
+    const ti = Math.floor((y - top) / th), loc = (y - top - ti * th) / th;
+    const half = (W / 2) * (0.1 + 0.9 * ((ti + loc) / tiers)) * (0.72 + 0.28 * loc);
+    for (let x = 0; x < w; x++) {
+      const dx = x - cx, u = dx / Math.max(1, half);
+      const jag = (hash2(y, ti, seed) - 0.5) * 2.2;
+      if (Math.abs(dx) > half + jag) continue;
+      if (Math.abs(u) > 0.8 && loc < 0.35) continue; // bough tips droop below the tier above
+      let v = 0.58 - 0.42 * u + (hash2(x, y, seed) - 0.5) * 0.45;
+      if (loc > 0.78) v -= 0.38;
+      else if (loc < 0.2) v += 0.12;
+      const lvl = Math.max(0, Math.min(4, Math.floor(v * 5 + bayer(x, y) - 0.5)));
+      let col = cols[lvl];
+      if (snow && loc < 0.4 && u < 0.6 && v > 0.35) col = v > 0.6 ? white : blue;
+      const i = (y * w + x) * 4;
+      d[i] = col[0]; d[i + 1] = col[1]; d[i + 2] = col[2]; d[i + 3] = 255;
+    }
+  }
+  g.putImageData(im, 0, 0);
+  const bark = ramp('#5a3a24');
+  P(g, cx - 1, top + H - 1, 3, 6, bark.m); P(g, cx - 1, top + H - 1, 1, 6, bark.l);
+  outline(c, '#0e2022');
+  return { cv: c, ax: cx, ay: top + H + 4, r: W / 2 };
+}
+
+// Ponderosa pine: a tall cinnamon-plated trunk with tufted clumps of needles up top.
+function drawPonderosa(size, seed, snow) {
+  const R = size * S, rnd = mulberry32(seed);
+  const w = Math.round(R * 2.4) + 8, h = Math.round(R * 3.4) + 8, cx = w >> 1, by = h - 2, trunkTop = Math.round(R * 0.6);
+  const c = mk(w, h), g = c.getContext('2d');
+  const bark = ['#6a3418', '#9a5428', '#c07838', '#dc9a58'];
+  for (let y = trunkTop; y <= by; y++) {
+    const tw = y > by - 4 ? 6 : 4;
+    for (let x = -Math.floor(tw / 2); x < Math.ceil(tw / 2); x++) {
+      const plate = hash2(cx + x, Math.floor(y / 3), seed) < 0.3;
+      P(g, cx + x, y, 1, 1, x === -Math.floor(tw / 2) ? bark[3] : x === Math.ceil(tw / 2) - 1 ? bark[0] : plate ? bark[1] : bark[2]);
+    }
+  }
+  const clusters = [], tips = [];
+  const tuft = (x, y, r) => {
+    for (let k = 0; k < 3; k++) clusters.push({ x: x + (k - 1) * r * 0.55, y: y + (k === 1 ? -r * 0.15 : 0), r: r * 0.55, ry: r * 0.36 });
+    tips.push([x, y, r]);
+  };
+  tuft(cx, trunkTop + R * 0.05, R * 0.6);
+  tuft(cx + R * 0.15, trunkTop - R * 0.25, R * 0.42);
+  for (let i = 0; i < 4; i++) {
+    const side = i % 2 ? 1 : -1, yy = trunkTop + R * (0.4 + i * 0.3);
+    const xx = cx + side * R * (0.5 + rnd() * 0.3);
+    line(g, cx, Math.round(yy + 3), Math.round(xx), Math.round(yy + 1), bark[0], 1);
+    tuft(xx, yy, R * (0.42 + rnd() * 0.12));
+  }
+  g.drawImage(paintClusters(w, h, clusters, FOLIAGE.pine, { seed, noise: 0.6, spiky: 0.5, snow, gx: cx, gy: trunkTop + R * 0.4, gr: R }), 0, 0);
+  // needle sprays poking out of each tuft
+  for (const [x, y, r] of tips) {
+    for (let k = 0; k < 7; k++) {
+      const a = -Math.PI + (k / 6) * Math.PI, len = r * (0.55 + rnd() * 0.25);
+      const ex = Math.round(x + Math.cos(a) * len * 1.25), ey = Math.round(y + Math.sin(a) * len * 0.7);
+      P(g, ex, ey, 1, 1, k % 2 ? FOLIAGE.pine[3] : FOLIAGE.pine[1]);
+    }
+  }
+  outline(c, '#10261a');
   return { cv: c, ax: cx, ay: by, r: R };
+}
+
+// A small grove of quaking aspens: white trunks with dark eyes, round fluttery leaves.
+function drawAspens(size, seed, snow, season) {
+  const R = size * S, rnd = mulberry32(seed), n = size >= 5 ? 3 : 2;
+  const w = Math.round(R * 2.6) + 10, h = Math.round(R * 3.4) + 8, by = h - 2, base = w >> 1;
+  const c = mk(w, h), g = c.getContext('2d'), pal = FOLIAGE.aspen[season === 'winter' ? 'summer' : season];
+  const trunks = Array.from({ length: n }, (_, i) => ({
+    x: Math.round(base + (i - (n - 1) / 2) * R * 0.7 + (rnd() - 0.5) * 3),
+    top: Math.round(R * (0.55 + rnd() * 0.5)), lean: (rnd() - 0.5) * 0.08,
+  }));
+  const clusters = [];
+  for (const t of trunks) {
+    for (let y = t.top; y <= by; y++) {
+      const x = Math.round(t.x + (by - y) * t.lean);
+      P(g, x - 1, y, 3, 1, '#e8e6dc'); P(g, x + 1, y, 1, 1, '#b8b4a8');
+      if (hash2(x, y, seed) < 0.1) P(g, x - 1 + Math.floor(hash2(y, x, seed) * 2), y, 2, 1, '#2a2a28');
+    }
+    for (let y = t.top + 6; y < by - 4; y += 7) {
+      const x = Math.round(t.x + (by - y) * t.lean);
+      if (hash2(x, y, seed + 3) < 0.6) { P(g, x - 1, y, 2, 1, '#2a2a28'); P(g, x, y + 1, 1, 1, '#4a4a46'); }
+    }
+    if (season === 'winter') {
+      for (let k = 0; k < 6; k++) {
+        const y0 = t.top + 2 + k * 3, side = k % 2 ? 1 : -1;
+        line(g, t.x, y0 + 4, t.x + side * (4 + (k % 3) * 2), y0, '#9a948a', 1);
+      }
+      continue;
+    }
+    const cy = t.top + R * 0.7;
+    for (let k = 0; k < 18; k++) {
+      const a = rnd() * Math.PI * 2, dd = Math.sqrt(rnd());
+      clusters.push({ x: t.x + Math.cos(a) * dd * R * 0.5, y: cy + Math.sin(a) * dd * R * 1.05, r: 2 + rnd() * 2.5 });
+    }
+  }
+  if (clusters.length) g.drawImage(paintClusters(w, h, clusters, pal, { seed, noise: 0.6, spiky: 0.22, snow, gx: base, gy: R, gr: R }), 0, 0);
+  if (season === 'fall' && !snow) for (let k = 0; k < 6; k++) P(g, Math.round(base + (rnd() - 0.5) * R * 2), by - Math.round(rnd() * 3), 1, 1, '#f4c838');
+  outline(c, season === 'fall' ? '#3a2008' : '#10261a');
+  return { cv: c, ax: base, ay: by, r: R };
+}
+
+function makeTree(kind, size, seed, snow, season) {
+  if (kind === 'spruce') return drawSpruce(size, seed, snow);
+  if (kind === 'pine') return drawPonderosa(size, seed, snow);
+  return drawAspens(size, seed, snow, season);
+}
+
+// Front Range shrubs, drawn straight into a prop sprite.
+function drawShrub(g, kind, cx, by, r, snow, season) {
+  const rnd = mulberry32(Math.round(cx * 7 + by)), w = r * 5 + 6, h = r * 3 + 6, ox = cx - (w >> 1), oy = by - h + 1;
+  const cl = [];
+  // leaf clusters fill a dome: a full row along the ground, then random clumps under the dome's curve
+  const low = kind === 'sage', tall = kind === 'gambel' || kind === 'juniper';
+  const half = r * (low ? 1.75 : 1.3), dome = r * (low ? 0.75 : tall ? 2.0 : 1.55), base = h - 2 - r * 0.45, mid = w >> 1;
+  for (let u = -0.8; u <= 0.81; u += 0.4) cl.push({ x: mid + u * half, y: base - rnd() * 1.5, r: r * 0.55, ry: r * (low ? 0.42 : 0.5) });
+  for (let i = 0; i < (low ? 5 : 9); i++) {
+    const u = rnd() * 2 - 1, lift = Math.sqrt(1 - u * u) * dome * (0.35 + rnd() * 0.65);
+    cl.push({ x: mid + u * half * 0.85, y: base - lift, r: r * (0.42 + rnd() * 0.2), ry: r * (low ? 0.38 : 0.48) });
+  }
+  if (kind === 'gambel' && season === 'winter') {
+    for (let i = 0; i < 9; i++) line(g, cx + Math.round((rnd() - 0.5) * r * 2.5), by, cx + Math.round((rnd() - 0.5) * r * 3.5), by - Math.round(r * (1 + rnd())), '#6a5040', 1);
+    return;
+  }
+  let pal = FOLIAGE[kind];
+  if (kind === 'gambel') pal = FOLIAGE.gambel[season];
+  if (kind === 'rose' && season === 'winter') pal = ['#3a2a22', '#5a3a2a', '#6a4a32', '#7a5a3a', '#8a6a4a'];
+  const cv = paintClusters(w, h, cl, pal, { seed: Math.round(cx), noise: 0.5, spiky: kind === 'juniper' ? 0.45 : kind === 'sage' ? 0.3 : 0.15, snow });
+  g.drawImage(cv, ox, oy);
+  if (snow) return;
+  const dots = (cols, k, yMax) => {
+    for (let i = 0; i < k; i++) {
+      const c0 = cl[Math.floor(rnd() * cl.length)], a = rnd() * Math.PI * 2;
+      const x = Math.round(ox + c0.x + Math.cos(a) * c0.r * 0.7), y = Math.round(oy + c0.y + Math.sin(a) * c0.ry * 0.7 * yMax);
+      P(g, x, y, 1, 1, cols[i % cols.length]);
+    }
+  };
+  if (kind === 'rabbit' && (season === 'fall' || season === 'summer')) {
+    // golden flower heads across the top
+    for (const c0 of cl) for (let k = 0; k < 4; k++) P(g, Math.round(ox + c0.x + (rnd() - 0.5) * c0.r * 1.6), Math.round(oy + c0.y - c0.ry * (0.6 + rnd() * 0.4)), 2, 1, k % 2 ? '#f8e060' : '#e8c030');
+  }
+  if (kind === 'juniper') dots(['#8ab0d8', '#6a90c0'], 6, 1);
+  if (kind === 'rose') dots(season === 'summer' || season === 'spring' ? ['#f080a0', '#ffffff', '#f0a0b8'] : ['#c83a2a', '#e05a3a'], 7, 1);
+}
+
+/* ---------- scenery ---------- */
+
+function disc(g, cx, cy, r, c) {
+  ellipse(g, cx, cy, r, r, c);
 }
 
 function drawHouse(g, h, snow) {
@@ -1417,18 +1604,6 @@ function drawLamp(g, x, by) {
   P(g, x - 4, by - 39, 9, 1, ir.m); P(g, x - 3, by - 40, 7, 1, ir.m); P(g, x - 1, by - 42, 3, 2, ir.l); P(g, x, by - 43, 1, 1, ir.l);
 }
 
-function drawBush(g, cx, by, r, snow) {
-  const lf = snow ? ramp('#3a6a50') : ramp('#3a8a38');
-  for (const [dx, dy, rr] of [[-0.7, -0.9, 0.7], [0.7, -0.9, 0.7], [0, -1.4, 0.8]]) {
-    const x = Math.round(cx + dx * r), y = Math.round(by + dy * r), R = Math.round(rr * r);
-    disc(g, x, y, R, lf.d); disc(g, x - 1, y - 1, R - 1, lf.m); disc(g, x - 2, y - 2, Math.max(1, R - 3), snow ? '#ffffff' : lf.l);
-  }
-  if (!snow) {
-    const rnd = mulberry32(cx);
-    for (let i = 0; i < 5; i++) P(g, Math.round(cx + (rnd() - 0.5) * r * 2.2), Math.round(by - r * (0.5 + rnd() * 1.4)), 2, 2, rnd() < 0.5 ? '#f05a7a' : '#ffffff');
-  }
-}
-
 function drawHaystack(g, cx, by, snow) {
   const hy = ramp('#d8b048');
   ellipse(g, cx, by - 7, 13, 7, hy.m); ellipse(g, cx - 3, by - 10, 7, 3, hy.l); P(g, cx - 12, by - 2, 25, 2, hy.d);
@@ -1516,7 +1691,7 @@ function drawWoodpile(g, snow) {
   if (snow) { P(g, lx + 5, ly - 21, 9, 2, '#ffffff'); P(g, lx - 4, ly - 13, 6, 1, '#ffffff'); P(g, lx + 18, ly - 13, 5, 1, '#ffffff'); }
 }
 
-function buildLand(snow) {
+function buildLand(snow, season = 'summer') {
   const c = mk(RW, RH), g = c.getContext('2d');
   const im = g.createImageData(RW, RH), d = im.data;
   const kind = new Uint8Array(RW * RH);
@@ -1591,7 +1766,10 @@ function buildLand(snow) {
 
   // ground: grass, cobbled street, flagstone square, pond and farm soil
   const pale = (arr) => (snow ? arr.map((c) => c.map((v) => v + (255 - v) * 0.3)) : arr);
-  const grass = C(snow ? ['#bccbe0', '#d4e0ee', '#e8f0f8', '#ffffff'] : ['#468434', '#5a9e40', '#70b44c', '#88c85c']);
+  // Front Range grass: green through summer, golden in fall, dry and tawny in a snowless winter
+  const grass = C(snow ? ['#bccbe0', '#d4e0ee', '#e8f0f8', '#ffffff']
+    : season === 'fall' ? ['#56783a', '#709040', '#8ea64c', '#acb85e']
+      : season === 'winter' ? ['#6a6a44', '#84804e', '#9e9460', '#b8aa74'] : ['#468434', '#5a9e40', '#70b44c', '#88c85c']);
   const dirt = C(snow ? ['#9a948e', '#b4aea6', '#ccc6be', '#e0dcd6'] : ['#86603c', '#a87e50', '#c49a64', '#d8b47c']);
   const soil = C(snow ? ['#8a8490', '#a8a2ac', '#c4c0c8', '#e4e4ec'] : ['#4e3020', '#6a4228', '#845634', '#9a6a42']);
   const water = C(snow ? ['#9ab8d0', '#b8d0e4', '#d4e6f4', '#ffffff'] : ['#24527e', '#2f6a9e', '#4a8cc4', '#9ad4f4']);
@@ -1709,7 +1887,7 @@ function buildLand(snow) {
   }
   g.putImageData(im, 0, 0);
   const K = (x, y) => kind[(y | 0) * RW + (x | 0)];
-  const hexG = snow ? ['#b8c8dc', '#ffffff'] : ['#3a7a2c', '#9ad86a'];
+  const hexG = snow ? ['#b8c8dc', '#ffffff'] : season === 'winter' ? ['#5a5a3a', '#c8b884'] : season === 'fall' ? ['#4a6a2e', '#c0c470'] : ['#3a7a2c', '#9ad86a'];
 
   // tufts, wildflower patches, mushrooms, pebbles
   const R2 = mulberry32(9);
@@ -1718,8 +1896,8 @@ function buildLand(snow) {
     if (K(x, y) !== 2 || K(x + 4, y) !== 2 || K(x, y + 3) !== 2) continue;
     tpl(g, ['.l..l', 'lml.l', 'mmlml'], x, y, { l: hexG[1], m: hexG[0] });
   }
-  if (!snow) {
-    for (let p = 0; p < 14; p++) {
+  if (!snow && season !== 'winter') {
+    for (let p = 0; p < (season === 'fall' ? 7 : 14); p++) {
       const px = 10 + R2() * (RW - 20), py = HZ + 10 + R2() * (RH - HZ - 14), col = pick(['#f05a6a', '#f8e060', '#ffffff', '#c890f8', '#f8a040']);
       for (let i = 0; i < 7; i++) {
         const x = Math.round(px + rand(-9, 9)), y = Math.round(py + rand(-4, 4));
@@ -1772,37 +1950,60 @@ function buildLand(snow) {
 
   drawPatio(g, snow);
   drawAmphitheater(g, snow);
+  {
+    // flower clusters and ferns along the back row, so the tiers sit in the meadow
+    const R3 = mulberry32(31), back = AMPHI.tiers[AMPHI.tiers.length - 1] + 9;
+    for (let deg = AMPHI.a0 + 2; deg <= AMPHI.a1 - 2; deg += 9) {
+      const t = (deg * Math.PI) / 180, x = Math.round(AMPHI.x + back * Math.cos(t)), y = Math.round(AMPHI.y + back * AMPHI.squash * Math.sin(t));
+      if (snow) { P(g, x - 2, y - 1, 5, 2, '#ffffff'); continue; }
+      tpl(g, ['g..g.g', '.gGgG.', 'gGGGGg'], x - 3, y - 3, { g: hexG[0], G: season === 'winter' ? '#8a7a50' : '#5aa840' });
+      if (season === 'winter') continue;
+      const col = ['#f05a7a', '#f8e060', '#c890f8', '#ffffff'][Math.floor(R3() * 4)];
+      if (R3() < 0.7) { P(g, x - 1, y - 5, 1, 1, col); P(g, x + 2, y - 4, 1, 1, col); P(g, x, y - 6, 1, 1, '#f8d030'); }
+    }
+  }
 
-  drawBackFarm(g, snow);
+  if (season !== 'winter' || snow) drawBackFarm(g, snow);
 
-  // trees behind the houses
-  const tree = (x, y, r, seed) => {
-    const t = makeTree(r, seed, snow), X = x * S, Y = y * S;
-    g.fillStyle = 'rgba(16,40,20,0.3)';
-    ellipse(g, X, Y, Math.round(t.r * 0.8), 3, 'rgba(16,40,20,0.3)');
-    g.drawImage(t.cv, X - t.ax, Y - t.ay);
+  // Trees and props are separate sprites, sorted by depth with everything that moves.
+  const props = [];
+  const prop = (bx, by, bw, bh, sortY, fn) => {
+    const pc = mk(bw, bh), pg = pc.getContext('2d');
+    pg.translate(-bx, -by); fn(pg); outline(pc);
+    props.push({ cv: pc, x: bx, y: by, sortY });
   };
-  [[40, 72, 6], [134, 70, 6], [160, 70, 5], [228, 70, 6], [-2, 78, 6], [88, 64, 5]].forEach(([x, y, r], i) => tree(x, y, r, 100 + i));
-
-  // buildings and props share one outlined layer
-  const lay = mk(RW, RH), lg = lay.getContext('2d');
-  drawWell(lg, snow);
-  drawBackFence(lg, snow);
-  drawScarecrow(lg, FARM.x1 - 16, FARM.y0 + 18, snow);
-  drawWoodpile(lg, snow);
-  drawBench(lg, FX - 18, FPY - 20, 36, snow); drawBench(lg, FX - 70, FPY + 21, 20, snow); drawBench(lg, FX + 50, FPY + 23, 20, snow);
-  for (const [lx, ly] of LAMPS) drawLamp(lg, lx, ly);
-  for (const [bx, byy, br] of [[156, 334, 6], [376, 340, 6], [424, 376, 7], [508, 376, 6], [250, 288, 5], [470, 250, 6], [660, 300, 6], [92, 248, 5]]) drawBush(lg, bx, byy, br, snow);
-  drawHaystack(lg, FARM.x0 - 14, FARM.y1 + 2, snow);
-  drawCoffeeCart(lg, snow);
-  drawMenuBoard(lg, PATIO.x0 - 10, PATIO.y0 + 8, snow);
-  for (const [tx, ty] of TABLES) { drawStool(lg, tx - 13, ty + 2); drawStool(lg, tx + 13, ty + 2); }
-  for (const [x, y] of STOOLS) drawStool(lg, x, y);
-  outline(lay);
-  g.drawImage(lay, 0, 0);
-
-  // trees in front
-  [[221, 106, 6]].forEach(([x, y, r], i) => tree(x, y, r, 200 + i));
+  const tree = (kind, x, y, r, seed) => {
+    const t = makeTree(kind, r, seed, snow, season), X = x * S, Y = y * S;
+    ellipse(g, X, Y, Math.round(t.r * 0.7), 3, 'rgba(16,40,20,0.3)');
+    props.push({ cv: t.cv, x: X - t.ax, y: Y - t.ay, sortY: y });
+  };
+  [
+    ['spruce', 40, 72, 6], ['pine', 134, 70, 6], ['aspen', 160, 70, 5], ['spruce', 228, 70, 6], ['pine', -2, 78, 6],
+    ['aspen', 88, 64, 4], ['spruce', 221, 106, 5], ['spruce', 63, 63, 3], ['aspen', 197, 71, 4],
+  ].forEach(([kind, x, y, r], i) => tree(kind, x, y, r, 100 + i));
+  const wx = WELL.x * S, wy = WELL.y * S - 3;
+  prop(wx - 22, wy - 58, 44, 62, WELL.y - 0.6, (pg) => drawWell(pg, snow));
+  prop(FARM.x0 - 6, FARM.y1 - 4, FARM.x1 - FARM.x0 + 12, 14, (FARM.y1 + 6) / S, (pg) => drawBackFence(pg, snow));
+  const scx = FARM.x1 - 16, scy = FARM.y0 + 18;
+  prop(scx - 13, scy - 32, 26, 34, scy / S, (pg) => drawScarecrow(pg, scx, scy, snow));
+  const sx = STUMP.x * S, sy = STUMP.y * S - 8;
+  prop(sx - 13, sy - 24, 56, 36, STUMP.y - 0.1, (pg) => drawWoodpile(pg, snow));
+  for (const [bx, by, bw] of [[FX - 18, FPY - 20, 36], [FX - 70, FPY + 21, 20], [FX + 50, FPY + 23, 20]]) prop(bx - 2, by - 12, bw + 4, 14, by / S, (pg) => drawBench(pg, bx, by, bw, snow));
+  for (const [lx, ly] of LAMPS) prop(lx - 6, ly - 46, 12, 48, ly / S, (pg) => drawLamp(pg, lx, ly));
+  for (const [kind, bx, by, br] of [
+    ['gambel', 156, 334, 6], ['rabbit', 376, 340, 6], ['juniper', 424, 376, 7], ['rose', 508, 376, 6], ['sage', 250, 288, 5],
+    ['gambel', 470, 250, 6], ['juniper', 660, 300, 6], ['rabbit', 92, 248, 5], ['gambel', 4, 374, 6], ['sage', 128, 322, 4],
+    ['juniper', 12, 362, 8], ['gambel', -3, 349, 6],
+  ]) {
+    const w = br * 5 + 6, h = br * 3 + 6;
+    prop(bx - (w >> 1) - 2, by - h - 1, w + 4, h + 4, by / S - 0.2, (pg) => drawShrub(pg, kind, bx, by, br, snow, season));
+  }
+  prop(FARM.x0 - 30, FARM.y1 - 15, 32, 20, (FARM.y1 + 2) / S, (pg) => drawHaystack(pg, FARM.x0 - 14, FARM.y1 + 2, snow));
+  prop(CART.x - 30, CART.by - 60, 60, 63, CART.by / S, (pg) => drawCoffeeCart(pg, snow));
+  const mbx = PATIO.x0 - 10, mby = PATIO.y0 + 8;
+  prop(mbx - 8, mby - 19, 16, 21, mby / S, (pg) => drawMenuBoard(pg, mbx, mby, snow));
+  for (const [x, y] of [...TABLES.flatMap(([tx, ty]) => [[tx - 13, ty + 2], [tx + 13, ty + 2]]), ...STOOLS]) prop(x - 5, y - 7, 11, 9, y / S - 0.05, (pg) => drawStool(pg, x, y));
+  c.props = props;
   return c;
 }
 
@@ -1936,6 +2137,11 @@ function makeStage(snow) {
   // the rolled-up canvas under the beam
   for (let x = Q.lx; x <= Q.rx; x++) { const y = topAt(x); P(g, X(x), Y(y), 1, 1, '#f8f2e2'); P(g, X(x), Y(y + 1), 1, 1, '#d8ccb0'); }
   if (!snow) {
+    const fx = Q.rx + 4, fy = back(Q.rx + 4) + 2;
+    P(g, X(fx), Y(fy - 4), 6, 4, '#a85a3a'); P(g, X(fx), Y(fy - 4), 6, 1, '#c87a52');
+    tpl(g, ['g.g.g', '.ggg.', 'gGgGg'], X(fx), Y(fy - 7), { g: '#3a8a3a', G: '#6ac050' });
+  }
+  if (!snow) {
     const px = x0 + depth - 3, py = back(x0) + depth / 2;
     P(g, X(px), Y(py - 6), 7, 5, '#b0603e'); P(g, X(px), Y(py - 6), 7, 1, '#c87a52');
     for (let k = 0; k < 4; k++) P(g, X(px + k * 2), Y(py - 9 + (k % 2)), 2, 2, k % 2 ? '#f0d040' : '#e85a6a');
@@ -1944,7 +2150,7 @@ function makeStage(snow) {
   return { cv: c, x: ox, y: oy };
 }
 
-function drawBackFarm(g, snow) {
+function drawBackFarm(g, snow, season) {
   const CAB = ['.ggg.', 'gGHGg', 'gGGGd', '.ddd.'];
   const CAR = ['H.H', '.g.', '.o.'];
   for (let k = 0; k < 5; k++) {
@@ -2838,6 +3044,7 @@ class PixelVillageCard extends HTMLElement {
     }
     this._weather = readWeather(this.previewWeather ?? (wEnt ? states[wEnt]?.state : ''));
     this._phase = this._phaseFor(h);
+    this._season = this.previewSeason || seasonOf(new Date());
     this._hourNow = h;
 
     if (mode !== this._mode) {
@@ -3057,8 +3264,8 @@ class PixelVillageCard extends HTMLElement {
     if (a.type === 'dog') { a.x = a.owner.x + rand(-4, 4); a.y = a.owner.y + 2; }
     else if (a.type === 'cat') { [a.x, a.y] = CAT_SPOTS[a.spot]; a.state = 'curl'; a.t = rand(5, 20); }
     else if (a.type === 'rabbit') { const z = RABBIT_ZONES[a.zone]; a.x = rand(z[0], z[2]); a.y = rand(z[1], z[3]); }
-    else if (a.type === 'squirrel') { const tb = TREE_BASES[a.tree]; a.x = tb[0] + rand(-4, 4); a.y = tb[1] + rand(1, 3); }
-    else { a.x = FIRE.x + rand(-30, 30); a.y = FIRE.y + rand(-8, 10); a.state = 'perch'; }
+    else if (a.type === 'squirrel') { const tb = TREE_BASES[a.tree]; [a.x, a.y] = freeSpot(tb[0] + rand(-4, 4), tb[1] + rand(1, 3)); }
+    else { const sp = birdSpot(); a.x = sp.x; a.y = sp.y; a.alt = sp.alt; a.state = 'perch'; }
   }
 
   _goAnimal(a, x, y, speed, state = 'walk', direct = false) {
@@ -3079,9 +3286,16 @@ class PixelVillageCard extends HTMLElement {
         if (d <= step) {
           a.x = a.tx; a.y = a.ty;
           if (a.path.length) [a.tx, a.ty] = a.path.shift();
-          else { a.state = a.rest || 'idle'; a.t = rand(2, 6); if (a.onArrive) { a.onArrive(); a.onArrive = null; } }
+          else {
+            a.state = a.rest || 'idle'; a.t = rand(2, 6);
+            if (a.type === 'bird') a.alt = a.alt1 || 0;
+            if (a.onArrive) { a.onArrive(); a.onArrive = null; }
+          }
         } else { a.x += (dx / d) * step; a.y += (dy / d) * step; }
-        if (a.type === 'bird' && a.state === 'fly') a.alt = Math.max(0, Math.sin(Math.min(1, 1 - d / (a.dist || 1)) * Math.PI) * 16 + 2);
+        if (a.type === 'bird' && a.state === 'fly') {
+          const pr = Math.min(1, Math.max(0, 1 - d / (a.dist || 1)));
+          a.alt = lerp(a.alt0 || 0, a.alt1 || 0, pr) + Math.sin(pr * Math.PI) * 14;
+        }
         continue;
       }
       a.t -= dt;
@@ -3132,7 +3346,7 @@ class PixelVillageCard extends HTMLElement {
           if (threat) {
             if (a.type === 'squirrel') {
               const tb = TREE_BASES[a.tree];
-              this._goAnimal(a, tb[0], tb[1] + 0.5, 22, 'hop', true);
+              this._goAnimal(a, ...freeSpot(tb[0], tb[1] + 0.5), 22, 'hop');
               a.onArrive = () => { a.hidden = true; a.t = rand(8, 20); };
             } else {
               const ang = Math.atan2(a.y - threat.y, a.x - threat.x), z = RABBIT_ZONES[a.zone];
@@ -3151,10 +3365,10 @@ class PixelVillageCard extends HTMLElement {
               const opts = TREE_BASES.map((_, i) => i).filter((i) => Math.hypot(TREE_BASES[i][0] - a.x, TREE_BASES[i][1] - a.y) < 50);
               a.tree = pick(opts.length ? opts : [a.tree]);
               const tb = TREE_BASES[a.tree];
-              this._goAnimal(a, tb[0] + rand(-5, 5), tb[1] + rand(1, 4), 16, 'hop', true);
+              this._goAnimal(a, ...freeSpot(tb[0] + rand(-5, 5), tb[1] + rand(1, 4)), 16, 'hop');
             } else {
               const tb = TREE_BASES[a.tree];
-              this._goAnimal(a, tb[0] + rand(-6, 6), tb[1] + rand(1, 5), 12, 'hop', true);
+              this._goAnimal(a, ...freeSpot(tb[0] + rand(-6, 6), tb[1] + rand(1, 5)), 12, 'hop');
             }
             a.rest = Math.random() < 0.5 ? 'sit' : 'idle';
           }
@@ -3165,10 +3379,10 @@ class PixelVillageCard extends HTMLElement {
           if (a.hidden) { a.hidden = false; a.state = 'perch'; this._placeAnimal(a); }
           const scared = near(a, people, 6);
           if (scared || a.t <= 0) {
-            const spots = [[FIRE.x + rand(-25, 25), FIRE.y + rand(-8, 10)], [rand(150, 200), rand(108, 124)], [rand(56, 86), rand(66, 74)], [rand(120, 166), rand(64, 75)]];
-            const [x, y] = scared ? pick(spots) : (Math.random() < 0.5 ? [a.x + rand(-10, 10), a.y + rand(-4, 4)] : pick(spots));
-            a.dist = Math.hypot(x - a.x, y - a.y) || 1;
-            this._goAnimal(a, x, y, 30, 'fly', true);
+            const sp = birdSpot();
+            a.dist = Math.hypot(sp.x - a.x, sp.y - a.y) || 1;
+            a.alt0 = a.alt || 0; a.alt1 = sp.alt;
+            this._goAnimal(a, sp.x, sp.y, 30, 'fly', true);
             a.rest = 'perch';
             a.t = rand(4, 14);
             break;
@@ -3196,6 +3410,7 @@ class PixelVillageCard extends HTMLElement {
     const [pose, frame] = this._animalPose(a), spr = animalSprite(a.type, a.variant, pose, frame);
     const x = Math.round(a.x * S), y = Math.round(a.y * S), lift = a.type === 'bird' ? Math.round((a.alt || 0) * S) : (a.state === 'hop' && frame ? 2 : 0);
     if (a.type !== 'bird' || !a.alt) { ctx.fillStyle = 'rgba(16,16,40,0.25)'; ctx.fillRect(x - 4, y, 9, 1); }
+    else if (a.state !== 'fly') { ctx.fillStyle = 'rgba(16,16,40,0.25)'; ctx.fillRect(x - 3, y - Math.round(a.alt * S) + 1, 7, 1); }
     const sx = x - spr.ax, sy = y - spr.by - lift;
     if (a.face > 0) ctx.drawImage(spr.cv, sx, sy);
     else { ctx.save(); ctx.translate(sx + spr.cv.width, sy); ctx.scale(-1, 1); ctx.drawImage(spr.cv, 0, 0); ctx.restore(); }
@@ -3372,6 +3587,7 @@ class PixelVillageCard extends HTMLElement {
     }
     if (v.gone) { v.plan = p; v.actT = p.dur; return; }
     v.plan = p;
+    [p.x, p.y] = freeSpot(p.x, p.y);
     v.path = route(v.x, v.y, p.x, p.y);
     [v.tx, v.ty] = v.path.shift();
     v.carry = p.carry || null;
@@ -3628,12 +3844,18 @@ class PixelVillageCard extends HTMLElement {
 
   _buildBg() {
     const w = this._weather, ph = this._phase;
-    const key = `${ph}|${w.snow ? 's' : ''}|${w.overcast ? 'o' : ''}`;
+    const key = `${ph}|${w.snow ? 's' : ''}|${w.overcast ? 'o' : ''}|${this._season}`;
     if (key === this._bgKey) return;
     this._bgKey = key;
-    const landKey = w.snow ? 'snow' : 'green';
+    const landKey = `${w.snow ? 'snow' : 'green'}|${this._season}`;
     if (this._landKey !== landKey) {
-      this._land = buildLand(w.snow);
+      this._land = buildLand(w.snow, this._season);
+      this._props = this._land.props;
+      // where the sky shows through: everything the land layer doesn't cover
+      this._skyMask = mk(RW, RH);
+      const mg = this._skyMask.getContext('2d');
+      mg.fillStyle = '#fff'; mg.fillRect(0, 0, RW, RH);
+      mg.globalCompositeOperation = 'destination-out'; mg.drawImage(this._land, 0, 0);
       this._landKey = landKey;
     }
     if (!this._bg) this._bg = mk(RW, RH);
@@ -3657,7 +3879,6 @@ class PixelVillageCard extends HTMLElement {
     }
     g.clearRect(0, 0, RW, RH);
     g.putImageData(im, 0, 0);
-    g.drawImage(this._land, 0, 0);
   }
 
   _art() {
@@ -3691,10 +3912,11 @@ class PixelVillageCard extends HTMLElement {
     this._buildBg();
     ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = 'source-over';
-    ctx.drawImage(this._bg, 0, 0);
+    ctx.drawImage(this._bg, 0, 0); // sky only
 
     if (ph !== 'night' && !w.overcast) this._drawSun(ctx);
     this._drawClouds(ctx);
+    ctx.drawImage(this._land, 0, 0); // mountains, hills and village in front of the sun and clouds
     if (this._mode === 'party') this._drawBunting(ctx);
 
     // depth-sorted world objects
@@ -3707,6 +3929,7 @@ class PixelVillageCard extends HTMLElement {
     if (this._mode === 'gaming' && this._screen > 0) items.push({ y: 112.6, d: () => this._drawConsole(ctx) });
     const houses = (a.houses[w.snow ? 1 : 0] ||= HOUSES.map((h) => makeHouse(h, w.snow)));
     HOUSES.forEach((h, i) => items.push({ y: h.base + 0.3, d: () => ctx.drawImage(houses[i].cv, houses[i].x, houses[i].y) }));
+    for (const pr of this._props) items.push({ y: pr.sortY, d: () => ctx.drawImage(pr.cv, pr.x, pr.y) });
     TABLES.forEach(([tx, ty], i) => items.push({ y: (ty + 3) / S, d: () => this._drawTable(ctx, i, tx, ty) }));
     if (this._sign === 2) {
       const spr = a.sign;
@@ -3734,11 +3957,22 @@ class PixelVillageCard extends HTMLElement {
     }
 
     // lights
-    if (ph !== 'day') this._drawStars(ctx);
-    if (ph === 'night') this._drawMoon(ctx);
+    if (ph !== 'day') {
+      // moon and stars stay bright after the night tint, but only where the sky shows
+      const ov = (this._skyOv ||= mk(RW, HZ + 10)), og = ov.getContext('2d');
+      og.globalCompositeOperation = 'source-over';
+      og.clearRect(0, 0, RW, HZ + 10);
+      this._drawStars(og);
+      if (ph === 'night') this._drawMoon(og);
+      og.globalCompositeOperation = 'destination-in';
+      og.drawImage(this._skyMask, 0, 0);
+      og.globalCompositeOperation = 'source-over';
+      ctx.drawImage(ov, 0, 0);
+    }
     this._drawWindows(ctx, dark);
     this._drawCafeLights(ctx, dark);
     this._drawFlames(ctx, dark);
+    this._redrawInFrontOfLights(ctx, tint, dark);
     if (this._mode === 'party') this._drawPartyLights(ctx, dark);
     if ((this._mode === 'movie' || this._mode === 'gaming') && this._screen >= 1) this._drawFilm(ctx, dark);
     if (this._mode === 'gaming' && dark) for (const v of this._villagers) if (!v.walking && v.action === 'handheld') this._glow(ctx, v.x * S + v.face * 6, v.y * S - 11, 8, '150,210,255', 0.45);
@@ -4071,6 +4305,54 @@ class PixelVillageCard extends HTMLElement {
         this._glow(ctx, x, y + 3, 16, '255,190,90', 0.42);
       }
     });
+  }
+
+  // Window panes and lanterns are drawn after the night tint so they stay bright; anyone standing in
+  // front of one is drawn again on top, tinted to match the night, so the light doesn't show through.
+  _redrawInFrontOfLights(ctx, tint, dark) {
+    const rects = [];
+    HOUSES.forEach((h, i) => {
+      if (this._occ?.[i]?.lit) for (const [gx, gy] of h.glass) rects.push([gx, gy, 9, 9, h.base]);
+      if (dark && this._mode !== 'away') rects.push([h.lantern.x - 2, h.lantern.y, 5, 7, h.base]);
+    });
+    // people in front of the fire are lit by it, so they get a warm tint rather than the plain night one
+    const warm = tint ? mixHex(tint, '#ffd8a8', 0.6) : null;
+    if (this._fireLevel() >= 2) rects.push([FIRE.x * S - 14, FIRE.y * S - 36, 29, 40, FIRE.y + 0.3, warm]);
+    if (dark) {
+      for (const [lx, ly] of LAMPS) rects.push([lx - 3, ly - 38, 7, 7, ly / S]);
+      for (const [lx, ly] of amphiLanterns()) rects.push([lx - 1, ly - 1, 3, 3, (ly + 17) / S]);
+    }
+    if (!rects.length) return;
+    const hits = (x, y, w, h, wy) => rects.find(([rx, ry, rw, rh, base]) => wy > base && rx < x + w && rx + rw > x && ry < y + h && ry + rh > y);
+    for (const v of this._villagers) {
+      if (v.inside || v.gone) continue;
+      const x = Math.round(v.x * S) - AX, y = Math.round(v.y * S) - FY - this._lift(v) * S;
+      const hit = hits(x, y, SW, SH, v.y);
+      if (!hit) continue;
+      const { pose, frame } = this._poseOf(v), spr = v.sprites.get(`${pose}|${frame}|${v.carry || ''}|${v.gear ? 1 : 0}`);
+      if (spr) this._drawTinted(ctx, spr.cv, x, y, v.face < 0, hit[5] === undefined ? tint : hit[5]);
+    }
+    for (const a of this._animals) {
+      if (a.hidden || (a.type === 'bird' && a.alt > 0)) continue;
+      const [pose, frame] = this._animalPose(a), spr = animalSprite(a.type, a.variant, pose, frame);
+      const x = Math.round(a.x * S) - spr.ax, y = Math.round(a.y * S) - spr.by - (a.state === 'hop' && frame ? 2 : 0);
+      const hit = hits(x, y, spr.cv.width, spr.cv.height, a.y);
+      if (hit) this._drawTinted(ctx, spr.cv, x, y, a.face < 0, hit[5] === undefined ? tint : hit[5]);
+    }
+  }
+
+  // Draw a sprite on top of the lit layer, matching the scene's lighting (multiplied by the tint).
+  _drawTinted(ctx, cv, x, y, flip, tint) {
+    const w = cv.width, h = cv.height;
+    const tmp = (this._tintTmp ||= mk(64, 64)), tg = tmp.getContext('2d');
+    const put = () => { if (flip) { tg.save(); tg.translate(w, 0); tg.scale(-1, 1); tg.drawImage(cv, 0, 0); tg.restore(); } else tg.drawImage(cv, 0, 0); };
+    tg.globalCompositeOperation = 'source-over'; tg.clearRect(0, 0, 64, 64);
+    put();
+    if (tint) {
+      tg.globalCompositeOperation = 'multiply'; tg.fillStyle = tint; tg.fillRect(0, 0, w, h);
+      tg.globalCompositeOperation = 'destination-in'; put();
+    }
+    ctx.drawImage(tmp, 0, 0, w, h, x, y, w, h);
   }
 
   _drawFlames(ctx, dark) {

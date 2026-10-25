@@ -50,6 +50,13 @@
         <option value="fog">Fog</option>
       </select>
     </div>
+    <div class="row">
+      <label for="season">Season</label>
+      <select id="season">
+        <option value="">Today's date</option><option value="spring">Spring</option><option value="summer">Summer</option>
+        <option value="fall">Fall</option><option value="winter">Winter</option>
+      </select>
+    </div>
     <p class="hint">In Home Assistant, the time comes from your server clock, and scenes come from whatever entities you map in the card config.</p>
   </div>
 </main>
@@ -96,6 +103,10 @@
     });
     modes.appendChild(b);
   }
+  document.getElementById('season').addEventListener('change', (e) => {
+    card.previewSeason = e.target.value || undefined;
+    push();
+  });
   document.getElementById('weather').addEventListener('change', (e) => {
     states['weather.home'] = { state: e.target.value, attributes: {} };
     push();
