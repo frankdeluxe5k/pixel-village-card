@@ -116,6 +116,17 @@ Repo: `github.com/frankdeluxe5k/pixel-village-card` (private; going public for H
 - Amphitheater at the front left: low turf terraces with fieldstone faces and log benches, painted onto
   the ground (no outline); a small rustic screen panel turned ~45° toward the seats, partly off the left
   edge, on an angled deck; projector behind the back row; bushes hide the deck's left corner.
+- Backdrop (`paintBackdrop`, a generator inside `buildLandSteps`), back to front: the Continental Divide
+  (hazy, jagged ridgelines from asymmetric cones; a flat-topped Longs-like massif with a sheer east face; faceted
+  rock from ridged noise lit from the left, warm granite patches; snow above a ragged snowline, mostly in
+  gullies, deeper in winter/spring); a nearer granite range (rock, tundra band, forest below a ragged
+  treeline); forested foothills with meadows and four Flatirons-style sandstone slabs; a forest edge of
+  spruce/fir spires, flat-crowned ponderosa and aspen groves (two rows, gold in fall, bare in winter); the
+  meadow. Snow is by altitude only (a ragged snowline per range, tongues down the gullies), never a rim along
+  ridgelines; every range has a selective 1 px silhouette outline (a pale rim on sunlit western flanks, a deeper shade of
+  the rock on the shaded side; never a flat black line, it grabs the eye). Distant forest is drawn as tidy rows of
+  conifer tips (`forestTex`) with a spiky top edge and a clean tundra band above, not random speckle. Layers stop at the next layer's top (trees count from the hill line, not their tips). Each layer
+  gets more haze with distance; everything frosts when it snows.
 - Foliage themed on the Colorado Front Range: blue spruce, ponderosa pine, aspen groves; Gambel oak,
   rabbitbrush, juniper, wild rose, sagebrush. Seasons follow the real date (aspens gold in fall, bare in
   winter, tawny winter grass); snow caps everything when it snows.
