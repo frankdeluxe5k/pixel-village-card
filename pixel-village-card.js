@@ -22,6 +22,7 @@ const MODES = {
   evening: { icon: '🔥', label: 'Evening',   text: 'Stories around the campfire' },
   party:   { icon: '🎉', label: 'Party!',    text: 'A festival in the village square' },
   movie:   { icon: '🎬', label: 'Movie night', text: 'Popcorn and a picture show under the stars' },
+  gaming:  { icon: '🎮', label: 'Game night', text: 'Controllers out and handhelds at the café' },
   cozy:    { icon: '🕯️', label: 'Cozy',      text: 'Everyone is snug indoors' },
   away:    { icon: '🎒', label: 'Adventure', text: 'Off on an adventure, back soon' },
 };
@@ -111,18 +112,23 @@ const LAMPS = [[FIRE.x * S - 58, FIRE.y * S - 34], [FIRE.x * S + 64, FIRE.y * S 
 
 // Movie night: a pull-up screen right of the fire, a projector behind the audience.
 // The amphitheater on the left: stage with a roll-down screen, curved tiers facing it.
-const SCREEN = { x0: -6, x1: 12, top: 102, base: 117 };
-const PROJ = { x: 46, y: 119 };
-const AMPHI = { x: 10, y: 354, tiers: [62, 86, 110], squash: 0.24, spread: 46 };
-const AMPHI_SEATS = [[0, -30], [0, 0], [0, 30], [1, -36], [1, -12], [1, 12], [1, 36], [2, -26], [2, 0], [2, 26]].map(([t, a]) => {
+const SCREEN = { x0: 2, x1: 16, top: 94, base: 115 };
+// The screen is a panel turned toward the seats at the lower right: its near edge is on the left
+// (lower on screen), its far edge on the right (higher), like a wall seen at 45° (render px).
+const SCREEN_Q = { lx: 8, ltop: 300, lbot: 344, rx: 48, rtop: 284, rbot: 326 };
+const lerp = (a, b, u) => a + (b - a) * u;
+const PROJ = { x: 43, y: 120.5 };
+// Tiers wrap around a point in front of the screen and open toward it.
+const AMPHI = { x: 28, y: 340, tiers: [50, 70, 90], squash: 0.42, a0: -12, a1: 68 };
+const AMPHI_SEATS = [[0, 2], [0, 28], [0, 54], [1, -6], [1, 16], [1, 38], [1, 60], [2, 2], [2, 28], [2, 54]].map(([t, a]) => {
   const rx = AMPHI.tiers[t], r = (a * Math.PI) / 180;
   return { x: (AMPHI.x + rx * Math.cos(r)) / S, y: (AMPHI.y + rx * AMPHI.squash * Math.sin(r)) / S, face: -1 };
 });
-const GUEST_SEATS = [[0, -15], [0, 15], [1, -28], [1, 0], [1, 28], [2, -40], [2, -13], [2, 13], [2, 40]].map(([t, a]) => {
+const GUEST_SEATS = [[0, -10], [0, 15], [0, 41], [1, 5], [1, 27], [1, 49], [2, -10], [2, 15], [2, 41]].map(([t, a]) => {
   const rx = AMPHI.tiers[t], r = (a * Math.PI) / 180;
   return { x: (AMPHI.x + rx * Math.cos(r)) / S, y: (AMPHI.y + rx * AMPHI.squash * Math.sin(r)) / S, face: -1 };
 });
-const STAGE_SPOT = { x: 7, y: 116.6 };
+const STAGE_SPOT = { x: 9.5, y: 114 };
 // The farm, set back behind the well (render pixels).
 const FARM = { x0: 144, x1: 268, y0: 198, y1: 226 };
 const farmSpot = () => ({ x: Math.random() < 0.5 ? rand(50, 62) : rand(78, 87), y: rand(67, 74) });
@@ -391,6 +397,20 @@ function ellipse(g, cx, cy, rx, ry, c) {
   }
 }
 
+function fillPoly(g, pts, c) {
+  g.fillStyle = c;
+  const ys = pts.map((p) => p[1]), y0 = Math.ceil(Math.min(...ys)), y1 = Math.floor(Math.max(...ys));
+  for (let y = y0; y <= y1; y++) {
+    const xs = [];
+    for (let i = 0; i < pts.length; i++) {
+      const [ax, ay] = pts[i], [bx, by] = pts[(i + 1) % pts.length];
+      if ((ay <= y && by > y) || (by <= y && ay > y)) xs.push(ax + ((y - ay) * (bx - ax)) / (by - ay));
+    }
+    xs.sort((a, b) => a - b);
+    for (let i = 0; i + 1 < xs.length; i += 2) g.fillRect(Math.round(xs[i]), y, Math.max(1, Math.round(xs[i + 1]) - Math.round(xs[i])), 1);
+  }
+}
+
 function tpl(g, rows, x, y, map) {
   for (let r = 0; r < rows.length; r++) {
     const row = rows[r];
@@ -592,6 +612,8 @@ const KEYS = {
   setup: [{ f: [3, -6], b: [-1, -8] }, { f: [2, -8], b: [0, -7] }, { f: [3, -9], b: [-1, -6] }, { f: [2, -7], b: [0, -8] }],
   serve: [{ f: [6, 1], b: [4, 2] }, { f: [5, -1], b: [4, 2] }, { f: [4, 2], b: [4, 2] }, { f: [6, 1], b: [4, 2] }],
   water: [{ f: [6, 1], b: [4, 2] }, { f: [6, 0], b: [4, 1] }],
+  handheld: [{ f: [4, 0], b: [3, 1] }, { f: [4, 1], b: [3, 1] }, { f: [4, 0], b: [3, 0] }],
+  controller: [{ f: [3, 2], b: [2, 3] }, { f: [4, 2], b: [2, 2] }, { f: [3, 1], b: [2, 3] }],
   band_drum: [{ f: [4, -2], b: [0, 4] }, { f: [5, 2], b: [0, 4] }],
   band_fiddle: [{ f: [5, 1], b: [6, -5] }, { f: [2, 2], b: [6, -5] }, { f: [-1, 3], b: [6, -5] }, { f: [2, 2], b: [6, -5] }],
   band_accordion: [{ f: [5, 4], b: [-3, 4] }, { f: [7, 4], b: [-4, 4] }, { f: [8, 4], b: [-5, 4] }, { f: [7, 4], b: [-4, 4] }],
@@ -613,6 +635,7 @@ const ANIM = {
   sweep: ['sweep', 5, [0, 1, 2, 3]], fetch: ['fetch', 4, [0, 1, 2, 3]], setup: ['setup', 4, [0, 1, 2, 3]],
   serve: ['serve', 2.5, [0, 1, 2, 3]], water: ['water', 4, [0, 1]],
   ride: [null, 8, [0, 1, 2, 3]],
+  handheld: ['handheld', 3, [0, 1, 0, 2, 1, 0]], controller: ['controller', 7, [0, 1, 2, 1]],
   band_drum: ['band_drum', 4, [0, 1]], band_fiddle: ['band_fiddle', 6, [0, 1, 2, 3]],
   band_accordion: ['band_accordion', 4, [0, 1, 2, 3]], band_horn: ['band_horn', 3, [0, 1]],
 };
@@ -646,7 +669,7 @@ Object.assign(HATS, {
   cap: { ox: -1, oy: -3, map: { C: '#3a9a5a', c: '#246a3e' }, rows: ['...CCCCCC.....', '..CCCCCCCC....', '.CCCCCCCCCC...', '.ccccccccccccc'] },
 });
 
-const SIT_POSES = new Set(['sit', 'eat', 'watch', 'lutesit', 'laptop', 'sip']);
+const SIT_POSES = new Set(['sit', 'eat', 'watch', 'lutesit', 'laptop', 'sip', 'handheld', 'controller']);
 const SHOE = ramp('#4a3022');
 const WOOD = ramp('#8a5a30');
 const METAL = ramp('#9aa2b0');
@@ -798,6 +821,18 @@ function drawTool(g, tool, hx, hy, frame, tt, tb) {
     case 'spoon':
       P(g, hx, hy - 2, 2, 2, '#e8a840');
       break;
+    case 'handheld0': // red-and-blue hybrid console
+      P(g, hx - 4, hy - 2, 2, 4, '#e03a3a'); P(g, hx - 2, hy - 2, 5, 4, '#2a2a30'); P(g, hx - 1, hy - 1, 3, 2, '#6ad0ff');
+      P(g, hx + 3, hy - 2, 2, 4, '#3a7ad8'); P(g, hx - 4, hy - 2, 1, 1, '#ff8a8a'); P(g, hx + 4, hy - 2, 1, 1, '#8ab0ff');
+      break;
+    case 'handheld1': // chunky dark handheld PC
+      P(g, hx - 4, hy - 2, 10, 4, '#3a3a44'); P(g, hx - 1, hy - 1, 4, 2, '#9ae0ff'); P(g, hx - 1, hy - 1, 1, 1, '#ffffff');
+      P(g, hx - 3, hy - 1, 1, 1, '#8a8a98'); P(g, hx + 4, hy, 1, 1, '#8a8a98');
+      break;
+    case 'pad': // wired controller
+      P(g, hx - 2, hy - 1, 6, 3, '#a8a8b4'); P(g, hx - 2, hy - 1, 6, 1, '#c8c8d4');
+      P(g, hx - 1, hy, 1, 1, '#2a2a30'); P(g, hx + 2, hy, 1, 1, '#e03a3a'); P(g, hx + 3, hy - 1, 1, 1, '#3a7ad8');
+      break;
     case 'mug':
       P(g, hx - 1, hy - 3, 4, 4, '#ffffff'); P(g, hx - 1, hy - 3, 4, 1, '#6a3a1a'); P(g, hx + 3, hy - 2, 1, 2, '#ffffff');
       P(g, hx + 2, hy - 2, 1, 3, '#d8dce4');
@@ -891,6 +926,8 @@ function buildVillager(v, pose, frame, carry, gear) {
     case 'water': tool = 'pour'; break;
     case 'sip': tool = 'mug'; break;
     case 'serve': tool = frame === 1 || frame === 2 ? null : 'mug'; break;
+    case 'handheld': tool = 'handheld' + (v.id % 2); break;
+    case 'controller': tool = 'pad'; break;
     case 'band_drum': tool = 'drum'; break;
     case 'band_fiddle': tool = 'fiddle'; break;
     case 'band_accordion': tool = 'accordion'; break;
@@ -929,7 +966,7 @@ function buildVillager(v, pose, frame, carry, gear) {
     line(g, hf[0] + 1, hf[1] - 9, hf[0] + 2, FY, '#9a6a3a', 2);
     P(g, hf[0], hf[1] - 11, 3, 3, '#6a4020');
   }
-  if (stick || (tool && !['popcorn', 'lute', 'bowl', 'spoon', 'mug', ...INSTRUMENTS].includes(tool))) {
+  if (stick || (tool && !['popcorn', 'lute', 'bowl', 'spoon', 'mug', 'handheld0', 'handheld1', 'pad', ...INSTRUMENTS].includes(tool))) {
     P(g, hf[0] - 1, hf[1] - 1, 3, 3, skin.m); P(g, hf[0] - 1, hf[1] - 1, 1, 1, skin.l);
   }
   outline(c);
@@ -1814,7 +1851,7 @@ function drawAmphitheater(g, snow) {
   const stamps = [];
   AMPHI.tiers.forEach((rx, t) => {
     const ry = rx * AMPHI.squash;
-    for (let a = -AMPHI.spread; a <= AMPHI.spread; a += 2) {
+    for (let a = AMPHI.a0; a <= AMPHI.a1; a += 1.5) {
       const r = (a * Math.PI) / 180;
       stamps.push({ x: Math.round(AMPHI.x + rx * Math.cos(r)), y: Math.round(AMPHI.y + ry * Math.sin(r)), i: stamps.length });
     }
@@ -1843,34 +1880,60 @@ function drawAmphitheater(g, snow) {
 }
 
 function amphiLanterns() {
-  return [-1, 1].map((s) => {
-    const t = ((AMPHI.spread + 6) * Math.PI) / 180, rx = AMPHI.tiers[AMPHI.tiers.length - 1] + 4;
-    return [Math.round(AMPHI.x + rx * Math.cos(t)), Math.round(AMPHI.y + s * rx * AMPHI.squash * Math.sin(t)) - 17];
+  return [AMPHI.a0 - 7, AMPHI.a1 + 5].map((deg) => {
+    const t = (deg * Math.PI) / 180, rx = AMPHI.tiers[AMPHI.tiers.length - 1] + 4;
+    return [Math.round(AMPHI.x + rx * Math.cos(t)), Math.round(AMPHI.y + rx * AMPHI.squash * Math.sin(t)) - 17];
   });
 }
 
-// Small rustic screen at the left edge of the scene, mostly out of frame.
+// Rustic screen at the left of the scene: a slanted panel turned toward the seats, on a low deck.
 function makeStage(snow) {
-  const ox = -30, oy = SCREEN.top * S - 6, c = mk(84, 64), g = c.getContext('2d');
+  const ox = 0, oy = 268, c = mk(76, 96), g = c.getContext('2d'), Q = SCREEN_Q;
   const X = (x) => x - ox, Y = (y) => y - oy;
-  const bark = ramp('#6a4428'), plank = ramp('#9a7a58'), deck = ramp('#a88a64'), st = ramp('#8a8680');
-  const L = SCREEN.x0 * S, R = SCREEN.x1 * S + 3, T = SCREEN.top * S, B = SCREEN.base * S;
-  P(g, X(ox), Y(T + 2), R - ox, B - T - 4, plank.m);
-  for (let x = ox; x < R; x += 5) { P(g, X(x), Y(T + 2), 1, B - T - 4, plank.d); P(g, X(x + 1), Y(T + 2), 1, B - T - 4, plank.l); }
-  P(g, X(R), Y(T - 2), 4, B - T + 2, bark.m); P(g, X(R), Y(T - 2), 1, B - T + 2, bark.l); P(g, X(R + 3), Y(T - 2), 1, B - T + 2, bark.d);
-  if (!snow) for (let y = T + 18; y < B; y += 3) P(g, X(R + 1 + Math.round(Math.sin(y * 0.5))), Y(y), 2, 2, y % 2 ? '#3a8a3a' : '#5aaa48');
-  P(g, X(ox), Y(T - 2), R + 6 - ox, 4, bark.m); P(g, X(ox), Y(T - 2), R + 6 - ox, 1, bark.l); P(g, X(R + 4), Y(T - 2), 2, 4, '#d8b07a');
-  if (snow) P(g, X(ox), Y(T - 4), R + 6 - ox, 2, '#ffffff');
-  P(g, X(L), Y(T + 1), R - L - 1, 2, '#e8dfc8'); P(g, X(L), Y(T + 1), R - L - 1, 1, '#f8f2e2');
-  P(g, X(ox), Y(B - 2), R + 8 - ox, 3, deck.l); P(g, X(ox), Y(B + 1), R + 8 - ox, 3, deck.m); P(g, X(ox), Y(B + 3), R + 8 - ox, 1, deck.o);
-  P(g, X(ox), Y(B + 4), R + 8 - ox, 4, st.m); P(g, X(ox), Y(B + 4), R + 8 - ox, 1, st.l);
-  for (let x = ox + 6; x < R + 8; x += 7) P(g, X(x), Y(B + 4), 1, 4, st.d);
-  if (snow) P(g, X(ox), Y(B - 3), R + 8 - ox, 1, '#ffffff');
+  const bark = ramp('#6a4428'), plank = ramp('#9a7a58'), deck = ramp('#a88a64'), st = ramp('#8a8680'), roof = ramp('#8a5a34');
+  const along = (u, a, b) => a + (b - a) * u;
+  const topAt = (x) => along((x - Q.lx) / (Q.rx - Q.lx), Q.ltop, Q.rtop), botAt = (x) => along((x - Q.lx) / (Q.rx - Q.lx), Q.lbot, Q.rbot);
+  // deck: its back edge runs under the panel, it reaches forward toward the seats
+  const fwd = [11, 9], b0 = [Q.lx - 5, Q.lbot + 2], b1 = [Q.rx + 5, Q.rbot + 2], f0 = [b0[0] + fwd[0], b0[1] + fwd[1]], f1 = [b1[0] + fwd[0], b1[1] + fwd[1]];
+  const T = (p) => [X(p[0]), Y(p[1])];
+  fillPoly(g, [b0, b1, f1, f0].map(T), snow ? '#e8eef6' : deck.l);
+  for (let k = 1; k < 4; k++) {
+    const u = k / 4, p = [along(u, b0[0], f0[0]), along(u, b0[1], f0[1])], q = [along(u, b1[0], f1[0]), along(u, b1[1], f1[1])];
+    line(g, Math.round(X(p[0])), Math.round(Y(p[1])), Math.round(X(q[0])), Math.round(Y(q[1])), deck.m, 1);
+  }
+  fillPoly(g, [f0, f1, [f1[0], f1[1] + 3], [f0[0], f0[1] + 3]].map(T), deck.d);
+  fillPoly(g, [[f0[0], f0[1] + 3], [f1[0], f1[1] + 3], [f1[0], f1[1] + 7], [f0[0], f0[1] + 7]].map(T), st.m);
+  for (let u = 0.08; u < 1; u += 0.14) P(g, Math.round(X(along(u, f0[0], f1[0]))), Math.round(Y(along(u, f0[1], f1[1]) + 3)), 1, 4, st.d);
+  fillPoly(g, [b1, f1, [f1[0], f1[1] + 7], [b1[0], b1[1] + 7]].map(T), st.d);
+  // plank backing inside the panel
+  for (let x = Q.lx; x <= Q.rx; x++) {
+    const t = Math.round(topAt(x)), b = Math.round(botAt(x));
+    P(g, X(x), Y(t), 1, b - t, x % 4 === 0 ? plank.d : x % 4 === 1 ? plank.l : plank.m);
+  }
+  for (let x = Q.lx + 2; x < Q.rx; x += 9) P(g, X(x), Y(Math.round(along(0.55, topAt(x), botAt(x)))), 3, 1, plank.o);
+  // posts at both ends: the near one in front, wrapped in ivy
+  P(g, X(Q.rx), Y(Q.rtop - 6), 3, Q.rbot - Q.rtop + 9, bark.m); P(g, X(Q.rx + 2), Y(Q.rtop - 6), 1, Q.rbot - Q.rtop + 9, bark.d);
+  P(g, X(Q.lx - 4), Y(Q.ltop - 7), 4, Q.lbot - Q.ltop + 10, bark.m); P(g, X(Q.lx - 4), Y(Q.ltop - 7), 1, Q.lbot - Q.ltop + 10, bark.l);
+  for (let y = Q.ltop - 3; y < Q.lbot; y += 6) P(g, X(Q.lx - 3 + ((y >> 2) % 2)), Y(y), 1, 3, bark.o);
+  if (!snow) for (let y = Q.ltop + 18; y < Q.lbot + 2; y += 3) P(g, X(Q.lx - 3 + Math.round(Math.sin(y * 0.5))), Y(y), 2, 2, y % 2 ? '#3a8a3a' : '#5aaa48');
+  // log beam and shingled cap following the slope
+  for (let x = Q.lx - 6; x <= Q.rx + 5; x++) {
+    const y = Math.round(topAt(x)) - 3;
+    P(g, X(x), Y(y), 1, 3, bark.m); P(g, X(x), Y(y), 1, 1, bark.l); P(g, X(x), Y(y + 2), 1, 1, bark.d);
+    for (let k = 1; k <= 4; k++) P(g, X(x), Y(y - k), 1, 1, snow && k > 2 ? '#f4f8ff' : (x + (k % 2) * 3) % 6 === 0 ? roof.o : k === 4 ? roof.l : roof.m);
+  }
+  P(g, X(Q.lx - 7), Y(Math.round(topAt(Q.lx - 7)) - 3), 2, 3, '#d8b07a');
+  // the rolled-up canvas under the beam
+  for (let x = Q.lx; x <= Q.rx; x++) { const y = Math.round(topAt(x)); P(g, X(x), Y(y), 1, 1, '#f8f2e2'); P(g, X(x), Y(y + 1), 1, 1, '#d8ccb0'); }
+  if (!snow) {
+    const [px, py] = [f0[0] - 2, f0[1] - 1];
+    P(g, X(px), Y(py - 5), 7, 5, '#b0603e'); P(g, X(px), Y(py - 5), 7, 1, '#c87a52');
+    for (let k = 0; k < 4; k++) P(g, X(px + k * 2), Y(py - 8 + (k % 2)), 2, 2, k % 2 ? '#f0d040' : '#e85a6a');
+  }
   outline(c);
   return { cv: c, x: ox, y: oy };
 }
 
-// The farm, now set back behind the well: smaller rows to read as further away.
 function drawBackFarm(g, snow) {
   const CAB = ['.ggg.', 'gGHGg', 'gGGGd', '.ddd.'];
   const CAR = ['H.H', '.g.', '.o.'];
@@ -2099,6 +2162,9 @@ const ACTIVE_STATES = new Set([
 ]);
 const EVENT_DOMAINS = ['scene', 'script', 'automation', 'button', 'input_button', 'event'];
 const REACTION_KINDS = ['activated', 'on', 'state', 'not_state', 'numeric'];
+// 'auto' sends the village back to its daily routine (e.g. a "Good morning" scene ending "Good night").
+const REACTION_MODES = new Set(['auto', ...Object.keys(MODES)]);
+const modeInfo = (m) => (m === 'auto' ? { icon: '🗓️', label: 'Daily routine', text: 'Follow the normal schedule' } : MODES[m]);
 
 const domainOf = (entity) => String(entity || '').split('.')[0];
 
@@ -2121,22 +2187,22 @@ function activatedAt(st, now) {
   return Date.parse(st.last_changed);
 }
 
-// First matching reaction wins; among "activated" reactions only the most recent one can win.
+// First matching reaction wins. Among "activated" reactions only the most recent activation counts,
+// and only while it's within its duration: pressing a newer scene cancels older ones for good.
 function evalReactions(list, states, now = Date.now()) {
   if (!Array.isArray(list) || !states) return null;
   let latest = null;
   list.forEach((t, i) => {
-    if (!t || !MODES[t.mode] || reactionKind(t) !== 'activated') return;
+    if (!t || !REACTION_MODES.has(t.mode) || reactionKind(t) !== 'activated') return;
     const st = states[t.entity];
     if (!st) return;
     const ts = activatedAt(st, now);
-    if (isNaN(ts)) return;
-    const mins = (now - ts) / 60000;
-    if (mins > -1 && mins < (Number(t.duration) || 120) && (!latest || ts > latest.ts)) latest = { i, ts };
+    if (!isNaN(ts) && ts <= now + 60000 && (!latest || ts > latest.ts)) latest = { i, ts };
   });
+  if (latest && (now - latest.ts) / 60000 >= (Number(list[latest.i].duration) || 120)) latest = null;
   for (let i = 0; i < list.length; i++) {
     const t = list[i];
-    if (!t || !MODES[t.mode]) continue;
+    if (!t || !REACTION_MODES.has(t.mode)) continue;
     const st = states[t.entity];
     if (!st) continue;
     const kind = reactionKind(t);
@@ -2165,12 +2231,13 @@ const SUGGEST_WORDS = [
   ['movie', ['movie', 'movies', 'cinema', 'film', 'theater', 'theatre', 'tv time', 'netflix', 'watch tv']],
   ['cozy', ['cozy', 'cosy', 'relax\\w*', 'chill', 'reading', 'fireplace', 'lounge', 'romantic', 'candle\\w*']],
   ['sleep', ['good ?night', 'sleep\\w*', 'bed ?time', 'night mode', 'lights out', 'nap']],
-  ['morning', ['good ?morning', 'morning', 'wake ?up', 'sunrise']],
+  ['auto', ['good ?morning', 'morning', 'wake ?up', 'sunrise', 'day ?time', 'daylight']],
+  ['gaming', ['gaming', 'games?', 'game ?night', 'xbox', 'playstation', 'ps[345]', 'nintendo', 'steam', 'console', 'retro']],
   ['meal', ['dinner', 'lunch', 'breakfast', 'meal', 'cooking', 'dining']],
   ['away', ['away', 'leave', 'leaving', 'vacation', 'holiday', 'good ?bye', 'not home', 'nobody home']],
   ['work', ['work', 'working', 'focus', 'office', 'study']],
 ].map(([mode, words]) => [mode, new RegExp(`\\b(${words.join('|')})\\b`, 'i')]);
-const SUGGEST_DURATION = { sleep: 480, away: 720, morning: 60, meal: 90, party: 180, movie: 150, cozy: 150, work: 240 };
+const SUGGEST_DURATION = { auto: 900, gaming: 240, sleep: 480, away: 720, morning: 60, meal: 90, party: 180, movie: 150, cozy: 150, work: 240 };
 
 function suggestReactions(states, existing = []) {
   if (!states) return [];
@@ -2182,9 +2249,9 @@ function suggestReactions(states, existing = []) {
     const d = domainOf(st.entity_id), name = nameOf(st);
     if (['scene', 'script', 'button', 'input_button'].includes(d)) {
       const hit = SUGGEST_WORDS.find(([, re]) => re.test(name));
-      if (hit) add({ entity: st.entity_id, when: 'activated', mode: hit[0], duration: SUGGEST_DURATION[hit[0]], why: `"${name}" sounds like ${MODES[hit[0]].label.toLowerCase()}` });
+      if (hit) add({ entity: st.entity_id, when: 'activated', mode: hit[0], duration: SUGGEST_DURATION[hit[0]], why: hit[0] === 'auto' ? `"${name}" sounds like the start of a normal day` : `"${name}" sounds like ${MODES[hit[0]].label.toLowerCase()}` });
     } else if (['input_boolean', 'switch'].includes(d)) {
-      const hit = SUGGEST_WORDS.find(([m, re]) => ['party', 'movie', 'sleep', 'away', 'cozy'].includes(m) && re.test(name));
+      const hit = SUGGEST_WORDS.find(([m, re]) => ['party', 'movie', 'gaming', 'sleep', 'away', 'cozy'].includes(m) && re.test(name));
       if (hit) add({ entity: st.entity_id, when: 'on', mode: hit[0], why: `while "${name}" is on` });
     } else if (d === 'alarm_control_panel') {
       add({ entity: st.entity_id, when: 'state', state: ['armed_away', 'armed_vacation'], mode: 'away', why: `when "${name}" is armed away` });
@@ -2196,13 +2263,13 @@ function suggestReactions(states, existing = []) {
   const people = Object.keys(states).filter((k) => k.startsWith('person.'));
   if (states['zone.home'] && people.length) add({ entity: 'zone.home', when: 'numeric', below: 1, mode: 'away', why: 'when nobody is home' });
   else if (people.length === 1) add({ entity: people[0], when: 'not_state', state: ['home'], mode: 'away', why: 'when you leave home' });
-  const order = Object.keys(MODES);
+  const order = ['auto', ...Object.keys(MODES)];
   return out.sort((a, b) => order.indexOf(a.mode) - order.indexOf(b.mode)).slice(0, 16);
 }
 
 /* ---------- visual editor ---------- */
 
-const MODE_OPTIONS = Object.entries(MODES).map(([value, m]) => ({ value, label: `${m.icon} ${m.label} — ${m.text}` }));
+const MODE_OPTIONS = ['auto', ...Object.keys(MODES)].map((value) => { const m = modeInfo(value); return { value, label: `${m.icon} ${m.label} — ${m.text}` }; });
 const SCHEDULE_FIELDS = [
   ['wake', 'Wake up'], ['work', 'Start work'], ['lunch', 'Lunch'], ['work_after_lunch', 'Back to work'],
   ['dinner', 'Dinner'], ['evening', 'Evening by the fire'], ['sleep', 'Bedtime'],
@@ -2219,7 +2286,7 @@ const EDITOR_HELPERS = {
   villagers: 'People who live in the village (1–10).',
   fps: 'Lower saves a little power; 15 is smooth.',
   weather_entity: 'Leave empty to use the first weather entity found.',
-  mode_entity: 'An input_select / select whose state is a mood name (sleep, morning, work, meal, evening, party, movie, cozy, away). Anything else falls back to the schedule.',
+  mode_entity: 'An input_select / select whose state is a mood name (sleep, morning, work, meal, evening, party, movie, gaming, cozy, away). Anything else falls back to the schedule.',
   duration: 'How long the mood lasts after it was activated.',
   attribute: 'Compare an attribute instead of the state.',
 };
@@ -2456,7 +2523,7 @@ class PixelVillageCardEditor extends HTMLElement {
       box.className = 'reaction';
       const title = () => {
         const st = this._hass?.states?.[t.entity];
-        return `${MODES[t.mode]?.icon || ''} ${st?.attributes?.friendly_name || t.entity || 'New reaction'}`;
+        return `${modeInfo(t.mode)?.icon || ''} ${st?.attributes?.friendly_name || t.entity || 'New reaction'}`;
       };
       box.innerHTML = `<div class="rhead"><span class="n">${i + 1}</span><span class="t"></span>
         <button class="icon" data-a="up" title="Move up" ${i === 0 ? 'disabled' : ''}>↑</button>
@@ -2498,7 +2565,7 @@ class PixelVillageCardEditor extends HTMLElement {
       row.className = 'sugg';
       const st = this._hass.states[s.entity];
       row.innerHTML = `<div class="what"><b></b><br><span></span></div><button>Add</button>`;
-      row.querySelector('b').textContent = `${MODES[s.mode].icon} ${MODES[s.mode].label}`;
+      row.querySelector('b').textContent = `${modeInfo(s.mode).icon} ${modeInfo(s.mode).label}`;
       row.querySelector('span').textContent = `${st?.attributes?.friendly_name || s.entity} — ${s.why}`;
       row.querySelector('button').onclick = () => {
         const { why, ...t } = s;
@@ -2750,7 +2817,7 @@ class PixelVillageCard extends HTMLElement {
     let mode, reason = null;
 
     const trig = this._matchTrigger();
-    if (trig) { mode = trig.mode; reason = trig; }
+    if (trig) { mode = trig.mode === 'auto' ? scheduleMode(h, this._schedule) : trig.mode; reason = trig.mode === 'auto' && !trig.label ? null : trig; }
     if (!mode && cfg.mode_entity && MODES[states[cfg.mode_entity]?.state]) mode = states[cfg.mode_entity].state;
     if (!mode) mode = scheduleMode(h, this._schedule);
 
@@ -2785,9 +2852,9 @@ class PixelVillageCard extends HTMLElement {
     if (prev === 'movie') this._popcorn = false;
     if (prev === undefined) {
       // First run: place everyone where they'd be right now, no commute.
-      if (this._mode === 'movie') {
+      if (this._mode === 'movie' || this._mode === 'gaming') {
         this._screen = 1;
-        this._popcorn = true;
+        this._popcorn = this._mode === 'movie';
       }
       if (this._mode === 'away') {
         this._sign = 2;
@@ -2802,7 +2869,7 @@ class PixelVillageCard extends HTMLElement {
         this._arrive(v);
         v.actT = rand(0, p.dur);
       }
-      const want = { sleep: 0, cozy: 1, away: 0, morning: 2, work: 3, meal: 3, evening: 3, movie: 4, party: 5 }[this._mode] ?? 2;
+      const want = { sleep: 0, cozy: 1, away: 0, morning: 2, work: 3, meal: 3, evening: 3, movie: 4, gaming: 3, party: 5 }[this._mode] ?? 2;
       const settle = (v) => {
         v.active = true; v.leaving = false; v.stayUntil = this._t + rand(40, 200); v.entry = 'east';
         v.gone = false; v.x = FIRE.x; v.y = FIRE.y + 12;
@@ -2866,7 +2933,7 @@ class PixelVillageCard extends HTMLElement {
     const cfg = this._config, m = this._mode, t = this._t;
     if (cfg.visitors === false) return;
     {
-      const target = { sleep: 0, cozy: 1, away: 1, morning: 2, work: 3, meal: 3, evening: 4, movie: 5, party: 6 }[m] ?? 2;
+      const target = { sleep: 0, cozy: 1, away: 1, morning: 2, work: 3, meal: 3, evening: 4, movie: 5, gaming: 4, party: 6 }[m] ?? 2;
       const vis = this._villagers.filter((v) => v.job === 'visitor');
       if (vis.filter((v) => v.active).length < target && t > (this._nextGuest || 0)) {
         const free = vis.filter((v) => !v.active && v.gone);
@@ -2905,10 +2972,13 @@ class PixelVillageCard extends HTMLElement {
           return { x: FIRE.x + Math.cos(v.ang) * 24, y: FIRE.y + 1 + Math.sin(v.ang) * 9, action: 'dance', dur: rand(1.5, 3.5) };
         }
         return r < 0.85 ? cafe('sip', rand(8, 14)) : chat();
+      case 'gaming':
+        if (r < 0.5) return cafe('handheld', rand(15, 30));
+      // falls through: the rest watch the big screen
       case 'movie': {
         const taken = new Set(this._villagers.filter((o) => o !== v && o.plan?.gseat !== undefined).map((o) => o.plan.gseat));
         const free = GUEST_SEATS.map((_, i) => i).filter((i) => !taken.has(i));
-        if (free.length) { const i = pick(free); return { ...GUEST_SEATS[i], gseat: i, action: 'watch', dur: rand(20, 40) }; }
+        if (free.length) { const i = pick(free); return { ...GUEST_SEATS[i], gseat: i, action: m === 'gaming' ? 'sit' : 'watch', dur: rand(20, 40) }; }
         return chat();
       }
       case 'away':
@@ -3160,11 +3230,11 @@ class PixelVillageCard extends HTMLElement {
     };
     if (v.guest) return this._planGuest(v, { cafe, chat, wander });
     const rigger = this._villagers.find((o) => o.job === 'woodcutter') || this._villagers[0];
-    const atScreen = { x: SCREEN.x1 + 2, y: SCREEN.base + 2.5, face: -1 };
+    const atScreen = { x: 20, y: 112.8, face: -1 };
     const atSign = { x: SIGN.x + 9, y: SIGN.base + 1.5, face: -1 };
 
     // Tidy up after an earlier mood before doing anything else.
-    if (m !== 'movie') {
+    if (m !== 'movie' && m !== 'gaming') {
       if (v === rigger && this._screen > 0) {
         return { ...atScreen, action: 'teardown', dur: 3 * this._screen + 0.3, done: () => { this._screen = 0; } };
       }
@@ -3186,6 +3256,16 @@ class PixelVillageCard extends HTMLElement {
         }
         if (job === 'cook' && !this._popcorn) return { ...cook(), dur: 6, done: () => { this._popcorn = true; } };
         return { ...AMPHI_SEATS[v.id], action: 'watch', dur: rand(15, 30) };
+      case 'gaming': {
+        if (v === rigger && this._screen < 1) {
+          return { ...atScreen, action: 'setup', dur: 3 * (1 - this._screen) + 0.3, done: () => { this._screen = 1; } };
+        }
+        // half the village plugs in at the amphitheater, the rest play handhelds at the café
+        const idx = this._villagers.filter((o) => !o.guest).indexOf(v);
+        if (job === 'cook' && r < 0.4) return { ...BARISTA, face: -1, action: 'serve', dur: rand(8, 14) };
+        if (idx % 2 === 0 && idx < 8) return { ...AMPHI_SEATS[idx / 2], action: 'controller', dur: rand(20, 40) };
+        return cafe('handheld', rand(15, 30));
+      }
       case 'away': {
         if (!v.gear) return { x: door.x, y: door.y, action: 'pack', dur: rand(0.8, 1.6), done: () => { v.gear = true; } };
         // The last one out puts up the sign.
@@ -3430,6 +3510,11 @@ class PixelVillageCard extends HTMLElement {
         v.fxT = 0.5;
         this._spawn({ x: SIGN.x, y: SIGN.base - 4, vx: rand(-8, 8), vy: rand(-14, -8), life: 0.4, c: '#e0bc78', grav: true, layer: 0 });
         break;
+      case 'handheld': case 'controller':
+        v.fxT = rand(2, 5);
+        if (Math.random() < 0.15) v.bubble = { g: 'bang', c: '#d03030', t: 1 };
+        else if (v.action === 'controller' && Math.random() < 0.12) { v.jumpT = 0.5; v.bubble = { g: 'heart', c: '#e04060', t: 1.4 }; }
+        break;
       case 'serve': case 'sip': case 'laptop': {
         v.fxT = rand(1.2, 2.5);
         const sx = v.action === 'serve' ? CART.x / S + 2 : v.x + v.face * 3;
@@ -3607,8 +3692,9 @@ class PixelVillageCard extends HTMLElement {
     for (const v of this._villagers) if (!v.inside && !v.gone) items.push({ y: v.y, d: () => this._drawVillager(ctx, v) });
     if (this._potOn()) items.push({ y: FIRE.y + 0.5, d: () => this._drawPot(ctx) });
     const stage = (a.stages[w.snow ? 1 : 0] ||= makeStage(w.snow));
-    items.push({ y: SCREEN.base - 1.5, d: () => { ctx.drawImage(stage.cv, stage.x, stage.y); this._drawScreen(ctx); } });
+    items.push({ y: 112.5, d: () => { ctx.drawImage(stage.cv, stage.x, stage.y); this._drawScreen(ctx); } });
     if (this._screen > 0) items.push({ y: PROJ.y, d: () => this._drawProjector(ctx) });
+    if (this._mode === 'gaming' && this._screen > 0) items.push({ y: 112.6, d: () => this._drawConsole(ctx) });
     const houses = (a.houses[w.snow ? 1 : 0] ||= HOUSES.map((h) => makeHouse(h, w.snow)));
     HOUSES.forEach((h, i) => items.push({ y: h.base + 0.3, d: () => ctx.drawImage(houses[i].cv, houses[i].x, houses[i].y) }));
     TABLES.forEach(([tx, ty], i) => items.push({ y: (ty + 3) / S, d: () => this._drawTable(ctx, i, tx, ty) }));
@@ -3644,7 +3730,8 @@ class PixelVillageCard extends HTMLElement {
     this._drawCafeLights(ctx, dark);
     this._drawFlames(ctx, dark);
     if (this._mode === 'party') this._drawPartyLights(ctx, dark);
-    if (this._mode === 'movie' && this._screen >= 1) this._drawFilm(ctx, dark);
+    if ((this._mode === 'movie' || this._mode === 'gaming') && this._screen >= 1) this._drawFilm(ctx, dark);
+    if (this._mode === 'gaming' && dark) for (const v of this._villagers) if (!v.walking && v.action === 'handheld') this._glow(ctx, v.x * S + v.face * 6, v.y * S - 11, 8, '150,210,255', 0.45);
     if (this._screen > 0) this._drawReels(ctx);
     if (ph === 'night' && !w.rain && !w.snow) this._drawFireflies(ctx);
     if (!w.snow && Math.random() < 0.6) {
@@ -3750,11 +3837,23 @@ class PixelVillageCard extends HTMLElement {
   }
 
   _drawScreen(ctx) {
-    const L = SCREEN.x0 * S + 2, R = SCREEN.x1 * S + 1, T = SCREEN.top * S + 2;
-    const fh = Math.round((SCREEN.base - SCREEN.top) * S * 0.92 * this._screen);
-    if (fh > 0) {
-      P(ctx, L, T, R - L, fh, '#efe8d6'); P(ctx, R - 3, T, 2, fh, '#cfc4a8');
-      P(ctx, L - 1, T + fh, R - L + 2, 2, OUT); P(ctx, L, T + fh, R - L, 1, '#7a7a86');
+    const Q = SCREEN_Q;
+    if (this._screen <= 0) return;
+    for (let x = Q.lx + 1; x < Q.rx; x++) {
+      const u = (x - Q.lx) / (Q.rx - Q.lx), top = Math.round(lerp(Q.ltop, Q.rtop, u)) + 2, bot = Math.round(lerp(Q.lbot, Q.rbot, u)) - 1;
+      const h = Math.round((bot - top) * this._screen);
+      P(ctx, x, top, 1, h, u > 0.8 ? '#ddd4c0' : '#efe8d6');
+      P(ctx, x, top + h, 1, 1, OUT);
+    }
+  }
+
+  // Draw the film flat, then lay it onto the angled screen one column at a time.
+  _blitAngled(ctx, cv) {
+    const Q = SCREEN_Q, a = Q.lx + 2, b = Q.rx - 2;
+    for (let x = a; x <= b; x++) {
+      const u = (x - a) / (b - a), sx = Math.min(FILM_W - 1, Math.floor(u * FILM_W));
+      const top = Math.round(lerp(Q.ltop + 5, Q.rtop + 5, u)), bot = Math.round(lerp(Q.lbot - 3, Q.rbot - 3, u));
+      ctx.drawImage(cv, sx, 0, 1, FILM_H, x, top, 1, bot - top);
     }
   }
 
@@ -3783,18 +3882,27 @@ class PixelVillageCard extends HTMLElement {
   }
 
   _drawFilm(ctx, dark) {
-    const a = this._art(), X = SCREEN.x0 * S + 3, Y = SCREEN.top * S + 3;
+    const a = this._art(), Q = SCREEN_Q;
     const sc = this._filmScene(), u = this._t % 6;
     const lens = [PROJ.x * S - a.projector.lens[0], PROJ.y * S + a.projector.lens[1]];
 
     ctx.globalCompositeOperation = 'lighter';
     ctx.fillStyle = `rgba(200,215,255,${dark ? 0.1 : 0.04})`;
     ctx.beginPath();
-    ctx.moveTo(lens[0], lens[1]); ctx.lineTo(X + FILM_W, Y); ctx.lineTo(X + FILM_W, Y + FILM_H); ctx.closePath();
+    ctx.moveTo(lens[0], lens[1]); ctx.lineTo(Q.rx - 3, Q.rtop + 5); ctx.lineTo(Q.lx + 3, Q.lbot - 3); ctx.closePath();
     ctx.fill();
     ctx.globalCompositeOperation = 'source-over';
-    if (dark) this._glow(ctx, X + FILM_W + 40, Y + 40, 90, ['110,130,255', '255,200,120', '255,140,150'][sc], 0.2);
+    if (dark) this._glow(ctx, Q.rx + 26, Q.lbot + 8, 90, ['110,130,255', '255,200,120', '255,140,150'][sc], 0.2);
 
+    const cv = (this._filmCv ||= mk(FILM_W, FILM_H)), fc = cv.getContext('2d');
+    fc.clearRect(0, 0, FILM_W, FILM_H);
+    if (this._mode === 'gaming') this._drawGame(fc, 0, 0);
+    else this._drawFilmContent(fc, 0, 0, a, sc, u);
+    ctx.imageSmoothingEnabled = false;
+    this._blitAngled(ctx, cv);
+  }
+
+  _drawFilmContent(ctx, X, Y, a, sc, u) {
     ctx.save();
     ctx.beginPath(); ctx.rect(X, Y, FILM_W, FILM_H); ctx.clip();
     ctx.drawImage(a.film[sc], X, Y);
@@ -3825,6 +3933,63 @@ class PixelVillageCard extends HTMLElement {
     }
     if (Math.random() < 0.25) P(ctx, X + Math.floor(Math.random() * FILM_W), Y, 1, FILM_H, 'rgba(255,255,255,0.18)');
     if (Math.random() < 0.15) P(ctx, X, Y, FILM_W, FILM_H, 'rgba(0,0,0,0.12)');
+    ctx.restore();
+  }
+
+  // An old-school console on the stage deck, with a cable to each player's controller.
+  _drawConsole(ctx) {
+    const cx = 40, cy = 343;
+    P(ctx, cx - 7, cy - 6, 14, 6, OUT); P(ctx, cx - 6, cy - 5, 12, 4, '#a8a8b4'); P(ctx, cx - 6, cy - 5, 12, 1, '#d0d0dc');
+    P(ctx, cx - 4, cy - 4, 5, 1, '#4a4a56'); P(ctx, cx + 3, cy - 3, 2, 1, Math.floor(this._t * 2) % 2 ? '#ff4040' : '#a02020');
+    for (const v of this._villagers) {
+      if (v.walking || v.action !== 'controller') continue;
+      const hx = v.x * S + v.face * 5, hy = v.y * S - 7 - this._lift(v) * S;
+      ctx.fillStyle = '#26262e';
+      for (let i = 0; i <= 24; i++) {
+        const u = i / 24, x = cx + 4 + (hx - cx - 4) * u, y = cy - 2 + (hy - cy + 2) * u + Math.sin(u * Math.PI) * 7;
+        ctx.fillRect(Math.round(x), Math.round(y), 1, 1);
+      }
+    }
+  }
+
+  // Retro games on the big screen: a platformer, a racer and a game of pong.
+  _drawGame(ctx, X, Y) {
+    const t = this._t, sc = Math.floor(t / 8) % 3, fr = Math.floor(t * 8) % 2;
+    ctx.save();
+    ctx.beginPath(); ctx.rect(X, Y, FILM_W, FILM_H); ctx.clip();
+    if (sc === 0) {
+      P(ctx, X, Y, FILM_W, FILM_H, '#6ab0f0');
+      const off = Math.floor(t * 12) % 8, cl = Math.floor(t * 3) % (FILM_W + 12);
+      P(ctx, X + FILM_W - cl, Y + 4, 8, 3, '#ffffff'); P(ctx, X + FILM_W - cl + 2, Y + 3, 4, 1, '#ffffff');
+      for (let x = -off; x < FILM_W; x += 8) { P(ctx, X + x, Y + 30, 8, 6, '#b8702c'); P(ctx, X + x, Y + 30, 8, 2, '#5ab040'); P(ctx, X + x, Y + 33, 1, 3, '#8a4a20'); }
+      const bx = X + FILM_W - ((t * 12) % (FILM_W + 16)) ;
+      P(ctx, Math.round(bx), Y + 14, 6, 6, '#e8b030'); P(ctx, Math.round(bx) + 2, Y + 15, 2, 4, '#ffffff');
+      const jy = Math.round(Math.abs(Math.sin(t * 3)) * 11);
+      P(ctx, X + 12, Y + 22 - jy, 4, 2, '#d03030'); P(ctx, X + 12, Y + 24 - jy, 4, 2, '#f0c8a0'); P(ctx, X + 12, Y + 26 - jy, 4, 3, '#3050c8');
+      P(ctx, X + 12 + fr, Y + 29 - jy, 1, 1, '#6a3a1a'); P(ctx, X + 15 - fr, Y + 29 - jy, 1, 1, '#6a3a1a');
+      if (fr) P(ctx, X + 30, Y + 10, 2, 3, '#ffe040');
+    } else if (sc === 1) {
+      P(ctx, X, Y, FILM_W, FILM_H, '#4a9a3a'); P(ctx, X + 10, Y, 24, FILM_H, '#5a5a66'); P(ctx, X + 9, Y, 1, FILM_H, '#ffffff'); P(ctx, X + 34, Y, 1, FILM_H, '#ffffff');
+      const d = Math.floor(t * 40) % 8;
+      for (let y = -8 + d; y < FILM_H; y += 8) P(ctx, X + 21, Y + y, 2, 4, '#f0e8a0');
+      for (let y = -12 + (Math.floor(t * 40) % 12); y < FILM_H; y += 12) { P(ctx, X + 3, Y + y, 3, 3, '#2a6a2a'); P(ctx, X + 38, Y + y + 5, 3, 3, '#2a6a2a'); }
+      const lead = Math.sin(t * 0.9) * 6;
+      for (const [cx, cy, col] of [[X + 13, Y + 20 + lead, '#e03a3a'], [X + 26, Y + 20 - lead, '#3a7ae0']]) {
+        P(ctx, Math.round(cx), Math.round(cy), 5, 8, col); P(ctx, Math.round(cx) + 1, Math.round(cy) + 2, 3, 2, '#c8e8ff');
+        P(ctx, Math.round(cx) - 1, Math.round(cy) + 1, 1, 2, '#1a1a20'); P(ctx, Math.round(cx) + 5, Math.round(cy) + 1, 1, 2, '#1a1a20');
+        P(ctx, Math.round(cx) - 1, Math.round(cy) + 5, 1, 2, '#1a1a20'); P(ctx, Math.round(cx) + 5, Math.round(cy) + 5, 1, 2, '#1a1a20');
+      }
+    } else {
+      P(ctx, X, Y, FILM_W, FILM_H, '#10101a');
+      for (let y = 1; y < FILM_H; y += 4) P(ctx, X + 21, Y + y, 1, 2, '#5a5a6a');
+      const u = (t * 0.7) % 2, bx = X + 3 + (u < 1 ? u : 2 - u) * (FILM_W - 8);
+      const w = (t * 1.1) % 2, by = Y + 2 + (w < 1 ? w : 2 - w) * (FILM_H - 6);
+      P(ctx, Math.round(bx), Math.round(by), 2, 2, '#ffffff');
+      P(ctx, X + 1, Math.round(Math.max(Y + 1, Math.min(Y + FILM_H - 8, by - 3))), 2, 7, '#f0f0f0');
+      P(ctx, X + FILM_W - 3, Math.round(Math.max(Y + 1, Math.min(Y + FILM_H - 8, by - 2 + Math.sin(t * 3) * 3))), 2, 7, '#f0f0f0');
+    }
+    if (Math.random() < 0.15) P(ctx, X, Y, FILM_W, FILM_H, 'rgba(0,0,0,0.1)');
+    for (let y = Y; y < Y + FILM_H; y += 2) P(ctx, X, y, FILM_W, 1, 'rgba(0,0,0,0.12)');
     ctx.restore();
   }
 
@@ -4025,6 +4190,7 @@ class PixelVillageCard extends HTMLElement {
     else switch (act) {
       case 'walk': case 'stretch': case 'dance': case 'farm': case 'chop': case 'cook': case 'chat': case 'sweep':
       case 'fetch': case 'eat': case 'watch': case 'water': case 'sit': case 'laptop': case 'sip': case 'serve':
+      case 'handheld': case 'controller':
         pose = act; break;
       case 'sign': case 'unsign': pose = 'sign'; break;
       case 'setup': case 'teardown': pose = 'setup'; break;

@@ -52,7 +52,10 @@ Add the card and open its editor. Everything is on one screen:
 | `numeric` | the state (or `attribute`) is `above:` and/or `below:` a number | sensors, `zone.home` (people at home), brightness |
 
 Unavailable or unknown entities never match, and never-used scenes or buttons don't count as
-activated.
+activated. A newer activation always cancels older ones, even once its own duration has run out.
+
+Besides the moods below, a reaction can send the village back to its **daily routine** (`mode: auto`).
+That's handy for a "Good morning" scene that should end "Good night" and let the normal day play out.
 
 ### YAML
 
@@ -88,6 +91,10 @@ triggers:                       # first match wins
     when: state
     state: playing
     mode: movie
+  - entity: scene.good_morning   # back to the normal day
+    when: activated
+    duration: 900
+    mode: auto
   - entity: input_boolean.guests
     when: "on"
     mode: party
@@ -111,13 +118,14 @@ entries with `state:` to `state`, and everything else to `on`.
 | `evening` | Campfire, chatting, the bard plays, the kid goes to bed early |
 | `party`   | Big fire, string lights, dancing in a ring, and a travelling band |
 | `movie`   | Movie night at the amphitheater: the screen rolls down, the cook makes popcorn, a projector comes out and everyone takes a seat |
+| `gaming`  | Game night: retro games on the big screen with players on wired controllers, and handheld consoles at the café |
 | `cozy`    | Everyone indoors with warm lit windows and smoking chimneys |
 | `away`    | Everyone grabs a backpack and walking stick and heads off on an adventure. The last one out hangs a "BACK SOON!" sign on the coffee cart, and the first one home takes it down |
 
 ### Driving it from automations
 
 Create an `input_select` (or `select`) with the options `auto, sleep, morning, work, meal, evening, party,
-movie, cozy, away`, pick it as the **mood helper**, and set it from any automation with
+movie, gaming, cozy, away`, pick it as the **mood helper**, and set it from any automation with
 `input_select.select_option`. `auto` (or anything that isn't a mood name) falls back to reactions and the
 daily routine. Reactions take priority over the mood helper.
 
