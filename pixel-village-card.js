@@ -21,7 +21,7 @@ const MODES = {
   meal:    { icon: '🍲', label: 'Mealtime',  text: 'Gathering round for a meal' },
   evening: { icon: '🔥', label: 'Evening',   text: 'Stories around the campfire' },
   party:   { icon: '🎉', label: 'Party!',    text: 'A festival in the village square' },
-  movie:   { icon: '🎬', label: 'Movie night', text: 'Popcorn and a picture show at the café' },
+  movie:   { icon: '🎬', label: 'Movie night', text: 'Popcorn and a picture show under the stars' },
   cozy:    { icon: '🕯️', label: 'Cozy',      text: 'Everyone is snug indoors' },
   away:    { icon: '🎒', label: 'Adventure', text: 'Off on an adventure, back soon' },
 };
@@ -2089,15 +2089,459 @@ function makeFilmBg(sc) {
   return c;
 }
 
+/* ---------- reactions: map anything in Home Assistant to a village mood ---------- */
+
+// States that count as "on / active" across the common domains.
+const ACTIVE_STATES = new Set([
+  'on', 'home', 'open', 'opening', 'playing', 'active', 'detected', 'occupied', 'unlocked', 'running', 'cleaning',
+  'heat', 'cool', 'heat_cool', 'auto', 'dry', 'fan_only', 'wet', 'problem', 'triggered',
+  'armed_away', 'armed_home', 'armed_night', 'armed_vacation', 'armed_custom_bypass',
+]);
+const EVENT_DOMAINS = ['scene', 'script', 'automation', 'button', 'input_button', 'event'];
+const REACTION_KINDS = ['activated', 'on', 'state', 'not_state', 'numeric'];
+
+const domainOf = (entity) => String(entity || '').split('.')[0];
+
+// Older configs leave `when` out: scenes, scripts and buttons react when activated, the rest when "on".
+function reactionKind(t) {
+  if (REACTION_KINDS.includes(t.when)) return t.when;
+  if (t.state !== undefined) return 'state';
+  if (t.above !== undefined || t.below !== undefined) return 'numeric';
+  return EVENT_DOMAINS.includes(domainOf(t.entity)) ? 'activated' : 'on';
+}
+
+// When was this entity last "activated"? Scenes and buttons store it as their state, scripts and
+// automations as last_triggered; anything else counts its last state change.
+function activatedAt(st, now) {
+  const d = domainOf(st.entity_id);
+  // never-used scenes and buttons report "unknown": they haven't been activated
+  if (['scene', 'button', 'input_button', 'event'].includes(d)) return Date.parse(st.state);
+  if (d === 'script' && st.state === 'on') return now;
+  if (d === 'script' || d === 'automation') return st.attributes?.last_triggered ? Date.parse(st.attributes.last_triggered) : NaN;
+  return Date.parse(st.last_changed);
+}
+
+// First matching reaction wins; among "activated" reactions only the most recent one can win.
+function evalReactions(list, states, now = Date.now()) {
+  if (!Array.isArray(list) || !states) return null;
+  let latest = null;
+  list.forEach((t, i) => {
+    if (!t || !MODES[t.mode] || reactionKind(t) !== 'activated') return;
+    const st = states[t.entity];
+    if (!st) return;
+    const ts = activatedAt(st, now);
+    if (isNaN(ts)) return;
+    const mins = (now - ts) / 60000;
+    if (mins > -1 && mins < (Number(t.duration) || 120) && (!latest || ts > latest.ts)) latest = { i, ts };
+  });
+  for (let i = 0; i < list.length; i++) {
+    const t = list[i];
+    if (!t || !MODES[t.mode]) continue;
+    const st = states[t.entity];
+    if (!st) continue;
+    const kind = reactionKind(t);
+    if (kind === 'activated') { if (latest?.i === i) return t; continue; }
+    const raw = t.attribute ? st.attributes?.[t.attribute] : st.state;
+    if (raw === undefined || raw === null) continue;
+    const val = String(raw);
+    if (val === 'unavailable' || val === 'unknown') continue;
+    const wanted = [].concat(t.state ?? []).map(String);
+    if (kind === 'on' && (raw === true || ACTIVE_STATES.has(val))) return t;
+    if (kind === 'state' && wanted.includes(val)) return t;
+    if (kind === 'not_state' && wanted.length && !wanted.includes(val)) return t;
+    if (kind === 'numeric') {
+      const n = parseFloat(raw);
+      const above = t.above === '' || t.above === undefined ? null : Number(t.above);
+      const below = t.below === '' || t.below === undefined ? null : Number(t.below);
+      if (!isNaN(n) && (above !== null || below !== null) && (above === null || n > above) && (below === null || n < below)) return t;
+    }
+  }
+  return null;
+}
+
+// Look at what's in this Home Assistant and propose sensible reactions.
+const SUGGEST_WORDS = [
+  ['party', ['party', 'celebrat\\w*', 'disco', 'festive', 'dance', 'dancing', 'birthday']],
+  ['movie', ['movie', 'movies', 'cinema', 'film', 'theater', 'theatre', 'tv time', 'netflix', 'watch tv']],
+  ['cozy', ['cozy', 'cosy', 'relax\\w*', 'chill', 'reading', 'fireplace', 'lounge', 'romantic', 'candle\\w*']],
+  ['sleep', ['good ?night', 'sleep\\w*', 'bed ?time', 'night mode', 'lights out', 'nap']],
+  ['morning', ['good ?morning', 'morning', 'wake ?up', 'sunrise']],
+  ['meal', ['dinner', 'lunch', 'breakfast', 'meal', 'cooking', 'dining']],
+  ['away', ['away', 'leave', 'leaving', 'vacation', 'holiday', 'good ?bye', 'not home', 'nobody home']],
+  ['work', ['work', 'working', 'focus', 'office', 'study']],
+].map(([mode, words]) => [mode, new RegExp(`\\b(${words.join('|')})\\b`, 'i')]);
+const SUGGEST_DURATION = { sleep: 480, away: 720, morning: 60, meal: 90, party: 180, movie: 150, cozy: 150, work: 240 };
+
+function suggestReactions(states, existing = []) {
+  if (!states) return [];
+  const have = new Set(existing.map((t) => `${t.entity}|${t.mode}`));
+  const out = [];
+  const add = (s) => { if (!have.has(`${s.entity}|${s.mode}`)) { have.add(`${s.entity}|${s.mode}`); out.push(s); } };
+  const nameOf = (st) => String(st.attributes?.friendly_name || st.entity_id.split('.')[1].replace(/_/g, ' '));
+  for (const st of Object.values(states)) {
+    const d = domainOf(st.entity_id), name = nameOf(st);
+    if (['scene', 'script', 'button', 'input_button'].includes(d)) {
+      const hit = SUGGEST_WORDS.find(([, re]) => re.test(name));
+      if (hit) add({ entity: st.entity_id, when: 'activated', mode: hit[0], duration: SUGGEST_DURATION[hit[0]], why: `"${name}" sounds like ${MODES[hit[0]].label.toLowerCase()}` });
+    } else if (['input_boolean', 'switch'].includes(d)) {
+      const hit = SUGGEST_WORDS.find(([m, re]) => ['party', 'movie', 'sleep', 'away', 'cozy'].includes(m) && re.test(name));
+      if (hit) add({ entity: st.entity_id, when: 'on', mode: hit[0], why: `while "${name}" is on` });
+    } else if (d === 'alarm_control_panel') {
+      add({ entity: st.entity_id, when: 'state', state: ['armed_away', 'armed_vacation'], mode: 'away', why: `when "${name}" is armed away` });
+      add({ entity: st.entity_id, when: 'state', state: ['armed_night'], mode: 'sleep', why: `when "${name}" is armed for the night` });
+    } else if (d === 'media_player' && (st.attributes?.device_class === 'tv' || /\b(tv|television|living room|lounge|theat(er|re)|projector)\b/i.test(name))) {
+      add({ entity: st.entity_id, when: 'state', state: ['playing'], mode: 'movie', why: `while "${name}" is playing` });
+    }
+  }
+  const people = Object.keys(states).filter((k) => k.startsWith('person.'));
+  if (states['zone.home'] && people.length) add({ entity: 'zone.home', when: 'numeric', below: 1, mode: 'away', why: 'when nobody is home' });
+  else if (people.length === 1) add({ entity: people[0], when: 'not_state', state: ['home'], mode: 'away', why: 'when you leave home' });
+  const order = Object.keys(MODES);
+  return out.sort((a, b) => order.indexOf(a.mode) - order.indexOf(b.mode)).slice(0, 16);
+}
+
+/* ---------- visual editor ---------- */
+
+const MODE_OPTIONS = Object.entries(MODES).map(([value, m]) => ({ value, label: `${m.icon} ${m.label} — ${m.text}` }));
+const SCHEDULE_FIELDS = [
+  ['wake', 'Wake up'], ['work', 'Start work'], ['lunch', 'Lunch'], ['work_after_lunch', 'Back to work'],
+  ['dinner', 'Dinner'], ['evening', 'Evening by the fire'], ['sleep', 'Bedtime'],
+];
+const EDITOR_LABELS = {
+  title: 'Title', villagers: 'Residents', visitors: 'Visitors, mail carrier and party band', animals: 'Animals',
+  show_status: 'Show the status line', fps: 'Frames per second',
+  weather_entity: 'Weather', sun_entity: 'Sun', mode_entity: 'Mood helper (optional)',
+  entity: 'When this', when: 'Condition', state: 'State', attribute: 'Attribute (optional)',
+  above: 'Above', below: 'Below', duration: 'Stay in this mood for (minutes)', mode: 'The village goes into', label: 'Caption (optional)',
+  ...Object.fromEntries(SCHEDULE_FIELDS),
+};
+const EDITOR_HELPERS = {
+  villagers: 'People who live in the village (1–10).',
+  fps: 'Lower saves a little power; 15 is smooth.',
+  weather_entity: 'Leave empty to use the first weather entity found.',
+  mode_entity: 'An input_select / select whose state is a mood name (sleep, morning, work, meal, evening, party, movie, cozy, away). Anything else falls back to the schedule.',
+  duration: 'How long the mood lasts after it was activated.',
+  attribute: 'Compare an attribute instead of the state.',
+};
+
+// The most useful starting condition for a freshly picked entity.
+function defaultKind(entity, states) {
+  const d = domainOf(entity), st = states?.[entity];
+  if (EVENT_DOMAINS.includes(d)) return 'activated';
+  if (['sensor', 'number', 'input_number', 'counter', 'zone'].includes(d) && st && !isNaN(parseFloat(st.state))) return 'numeric';
+  if (['person', 'device_tracker', 'media_player', 'alarm_control_panel', 'input_select', 'select', 'vacuum', 'lock', 'cover', 'climate', 'weather'].includes(d)) return 'state';
+  return 'on';
+}
+
+function kindOptions(entity) {
+  const d = domainOf(entity);
+  const ev = EVENT_DOMAINS.includes(d);
+  return [
+    { value: 'activated', label: ev ? 'Is activated / run' : 'Changes (any state change)' },
+    { value: 'on', label: 'Is on / active (on, home, open, playing…)' },
+    { value: 'state', label: 'Has a specific state' },
+    { value: 'not_state', label: "Doesn't have a specific state" },
+    { value: 'numeric', label: 'Is above / below a number' },
+  ];
+}
+
+function reactionSchema(t) {
+  const kind = reactionKind(t);
+  const schema = [
+    { name: 'entity', required: true, selector: { entity: {} } },
+    { name: 'when', selector: { select: { mode: 'dropdown', options: kindOptions(t.entity) } } },
+  ];
+  if (kind === 'activated') schema.push({ name: 'duration', selector: { number: { min: 1, max: 1440, step: 1, mode: 'box', unit_of_measurement: 'min' } } });
+  if (kind === 'state' || kind === 'not_state' || kind === 'numeric') {
+    schema.push({ name: 'attribute', selector: { attribute: {} }, context: { filter_entity: 'entity' } });
+  }
+  if (kind === 'state' || kind === 'not_state') {
+    schema.push({ name: 'state', selector: { state: { multiple: true } }, context: { filter_entity: 'entity', filter_attribute: 'attribute' } });
+  }
+  if (kind === 'numeric') {
+    schema.push({ type: 'grid', name: '', schema: [
+      { name: 'above', selector: { number: { mode: 'box', step: 'any' } } },
+      { name: 'below', selector: { number: { mode: 'box', step: 'any' } } },
+    ] });
+  }
+  schema.push({ name: 'mode', required: true, selector: { select: { mode: 'dropdown', options: MODE_OPTIONS } } });
+  schema.push({ name: 'label', selector: { text: {} } });
+  return schema;
+}
+
+// Strip empty values and defaults so the saved YAML stays tidy.
+function cleanReaction(t) {
+  const out = {};
+  for (const k of ['entity', 'when', 'attribute', 'state', 'above', 'below', 'duration', 'mode', 'label']) {
+    const v = t[k];
+    if (v === undefined || v === null || v === '' || (Array.isArray(v) && !v.length)) continue;
+    out[k] = v;
+  }
+  const kind = reactionKind(out);
+  if (kind !== 'activated') delete out.duration;
+  if (kind !== 'state' && kind !== 'not_state') delete out.state;
+  if (kind !== 'numeric') { delete out.above; delete out.below; }
+  if (kind === 'activated' || kind === 'on') delete out.attribute;
+  return out;
+}
+
+let haComponents;
+function loadHaComponents() {
+  // ha-form and the pickers are lazy-loaded by Home Assistant; borrowing a built-in card's editor loads them.
+  haComponents ||= (async () => {
+    if (customElements.get('ha-form') && customElements.get('ha-entity-picker')) return;
+    try {
+      const helpers = await window.loadCardHelpers?.();
+      const card = await helpers?.createCardElement({ type: 'entities', entities: [] });
+      await card?.constructor?.getConfigElement?.();
+    } catch (e) { /* fall through to waiting */ }
+    await Promise.race([customElements.whenDefined('ha-form'), new Promise((r) => setTimeout(r, 4000))]);
+  })();
+  return haComponents;
+}
+
+class PixelVillageCardEditor extends HTMLElement {
+  setConfig(config) {
+    this._config = { ...config, triggers: Array.isArray(config.triggers) ? config.triggers.map((t) => ({ ...t })) : [] };
+    if (this._ready) this._refresh();
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    if (this._ready) {
+      for (const f of this.shadowRoot.querySelectorAll('ha-form')) f.hass = hass;
+      this._renderSuggestions();
+    }
+  }
+
+  async connectedCallback() {
+    if (this._ready) return;
+    await loadHaComponents();
+    this._ready = true;
+    this._build();
+  }
+
+  _emit() {
+    const c = { ...this._config };
+    c.triggers = (c.triggers || []).map(cleanReaction).filter((t) => t.entity && t.mode);
+    if (!c.triggers.length) delete c.triggers;
+    for (const k of ['title', 'weather_entity', 'mode_entity']) if (!c[k]) delete c[k];
+    if (c.sun_entity === 'sun.sun' || !c.sun_entity) delete c.sun_entity;
+    for (const k of ['visitors', 'animals', 'show_status']) if (c[k] === true) delete c[k];
+    if (c.fps === 15) delete c.fps;
+    if (c.schedule) {
+      const sch = {};
+      for (const [k] of SCHEDULE_FIELDS) {
+        const v = c.schedule[k];
+        if (v && String(v).slice(0, 5) !== hourToTime(DEFAULT_SCHEDULE[k])) sch[k] = String(v).slice(0, 5);
+      }
+      if (Object.keys(sch).length) c.schedule = sch; else delete c.schedule;
+    }
+    this._config = { ...this._config, schedule: c.schedule };
+    this.dispatchEvent(new CustomEvent('config-changed', { detail: { config: c }, bubbles: true, composed: true }));
+  }
+
+  _form(schema, data, onChange) {
+    if (!customElements.get('ha-form')) {
+      const p = document.createElement('p');
+      p.className = 'note';
+      p.textContent = 'This version of Home Assistant can’t show the visual editor; use the code editor instead.';
+      return p;
+    }
+    const f = document.createElement('ha-form');
+    f.hass = this._hass;
+    f.schema = schema;
+    f.data = data;
+    f.computeLabel = (s) => EDITOR_LABELS[s.name] ?? s.name;
+    f.computeHelper = (s) => EDITOR_HELPERS[s.name];
+    f.addEventListener('value-changed', (ev) => { ev.stopPropagation(); onChange(ev.detail.value, f); });
+    return f;
+  }
+
+  _section(title, intro) {
+    const s = document.createElement('section');
+    s.innerHTML = `<h3>${title}</h3>${intro ? `<p class="note">${intro}</p>` : ''}`;
+    this._root.appendChild(s);
+    return s;
+  }
+
+  _build() {
+    const root = this.shadowRoot || this.attachShadow({ mode: 'open' });
+    root.innerHTML = `
+      <style>
+        :host { display: block; }
+        section { margin-bottom: 20px; }
+        h3 { margin: 18px 0 6px; font-size: 15px; font-weight: 500; }
+        .note { margin: 0 0 10px; font-size: 13px; color: var(--secondary-text-color); line-height: 1.45; }
+        .reaction { border: 1px solid var(--divider-color, #ddd); border-radius: 12px; padding: 8px 12px 12px; margin-bottom: 10px; }
+        .rhead { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+        .rhead .t { flex: 1; font-weight: 500; font-size: 14px; }
+        .rhead .n { color: var(--secondary-text-color); font-size: 12px; }
+        button { font: inherit; font-size: 13px; border-radius: 8px; border: 1px solid var(--divider-color, #ccc);
+          background: var(--card-background-color, #fff); color: var(--primary-text-color); padding: 6px 10px; cursor: pointer; }
+        button.icon { padding: 2px 8px; min-width: 30px; }
+        button.primary { background: var(--primary-color); border-color: var(--primary-color); color: var(--text-primary-color, #fff); }
+        button:disabled { opacity: 0.4; cursor: default; }
+        .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+        .sugg { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-top: 1px solid var(--divider-color, #eee); }
+        .sugg .what { flex: 1; font-size: 13px; line-height: 1.35; }
+        .sugg .what b { font-weight: 500; }
+        .sugg .what span { color: var(--secondary-text-color); }
+        .empty { font-size: 13px; color: var(--secondary-text-color); padding: 6px 0; }
+      </style>
+      <div id="root"></div>`;
+    this._root = root.getElementById('root');
+    const cfg = this._config;
+
+    const gen = this._section('Village');
+    gen.appendChild(this._form([
+      { name: 'title', selector: { text: {} } },
+      { name: 'villagers', selector: { number: { min: 1, max: 10, step: 1, mode: 'slider' } } },
+      { type: 'grid', name: '', schema: [
+        { name: 'visitors', selector: { boolean: {} } },
+        { name: 'animals', selector: { boolean: {} } },
+      ] },
+      { name: 'show_status', selector: { boolean: {} } },
+      { name: 'fps', selector: { number: { min: 2, max: 30, step: 1, mode: 'box' } } },
+    ], {
+      title: cfg.title ?? '', villagers: cfg.villagers ?? 6, visitors: cfg.visitors !== false, animals: cfg.animals !== false,
+      show_status: cfg.show_status !== false, fps: cfg.fps ?? 15,
+    }, (v) => { Object.assign(this._config, v); this._emit(); }));
+
+    const env = this._section('Surroundings', 'The village follows the sun and the weather. A mood helper lets automations set the mood directly.');
+    env.appendChild(this._form([
+      { name: 'weather_entity', selector: { entity: { domain: 'weather' } } },
+      { name: 'sun_entity', selector: { entity: { domain: 'sun' } } },
+      { name: 'mode_entity', selector: { entity: { domain: ['input_select', 'select', 'input_text'] } } },
+    ], { weather_entity: cfg.weather_entity ?? '', sun_entity: cfg.sun_entity ?? 'sun.sun', mode_entity: cfg.mode_entity ?? '' },
+    (v) => { Object.assign(this._config, v); this._emit(); }));
+
+    const sch = this._section('Daily routine', 'What the villagers do when nothing else is going on.');
+    const schData = {};
+    for (const [k] of SCHEDULE_FIELDS) schData[k] = `${hourToTime(parseHour(cfg.schedule?.[k] ?? DEFAULT_SCHEDULE[k]))}:00`;
+    sch.appendChild(this._form([{ type: 'grid', name: '', schema: SCHEDULE_FIELDS.map(([name]) => ({ name, selector: { time: {} } })) }], schData,
+      (v) => { this._config.schedule = { ...v }; this._emit(); }));
+
+    const re = this._section('Reactions', 'Tie anything in your home to a village mood: scenes, scripts, automations, buttons, switches, media players, people, alarms, sensors. The first reaction that matches wins, so put the most important ones on top.');
+    this._list = document.createElement('div');
+    re.appendChild(this._list);
+    const add = document.createElement('div');
+    add.className = 'row';
+    add.innerHTML = '<button class="primary" id="add">+ Add reaction</button>';
+    add.querySelector('#add').onclick = () => {
+      this._config.triggers.push({ entity: '', mode: 'party' });
+      this._renderList(); this._emit();
+    };
+    re.appendChild(add);
+
+    const sg = this._section('Suggestions', 'Based on what’s in your Home Assistant. Add the ones you like and tweak them above.');
+    this._sugg = document.createElement('div');
+    sg.appendChild(this._sugg);
+
+    this._renderList();
+    this._renderSuggestions();
+  }
+
+  _refresh() {
+    // a config change from outside (e.g. the YAML editor): rebuild everything
+    this._build();
+  }
+
+  _renderList() {
+    const list = this._config.triggers;
+    this._list.innerHTML = '';
+    if (!list.length) this._list.innerHTML = '<div class="empty">No reactions yet — the village just follows its daily routine.</div>';
+    list.forEach((t, i) => {
+      const box = document.createElement('div');
+      box.className = 'reaction';
+      const title = () => {
+        const st = this._hass?.states?.[t.entity];
+        return `${MODES[t.mode]?.icon || ''} ${st?.attributes?.friendly_name || t.entity || 'New reaction'}`;
+      };
+      box.innerHTML = `<div class="rhead"><span class="n">${i + 1}</span><span class="t"></span>
+        <button class="icon" data-a="up" title="Move up" ${i === 0 ? 'disabled' : ''}>↑</button>
+        <button class="icon" data-a="down" title="Move down" ${i === list.length - 1 ? 'disabled' : ''}>↓</button>
+        <button class="icon" data-a="del" title="Remove">✕</button></div>`;
+      box.querySelector('.t').textContent = title();
+      box.querySelector('[data-a=up]').onclick = () => { [list[i - 1], list[i]] = [list[i], list[i - 1]]; this._renderList(); this._emit(); };
+      box.querySelector('[data-a=down]').onclick = () => { [list[i + 1], list[i]] = [list[i], list[i + 1]]; this._renderList(); this._emit(); };
+      box.querySelector('[data-a=del]').onclick = () => { list.splice(i, 1); this._renderList(); this._emit(); };
+      const data = { ...t, when: reactionKind(t), duration: t.duration ?? 120 };
+      const form = this._form(reactionSchema(t), data, (v, f) => {
+        const entityChanged = v.entity !== t.entity;
+        Object.assign(t, v);
+        if (entityChanged && !list[i]._whenTouched) t.when = defaultKind(t.entity, this._hass?.states);
+        if (v.when !== data.when) list[i]._whenTouched = true;
+        Object.keys(t).forEach((k) => { if (t[k] === undefined) delete t[k]; });
+        const next = reactionSchema(t);
+        if (JSON.stringify(next) !== JSON.stringify(f.schema)) f.schema = next;
+        f.data = { ...t, when: reactionKind(t), duration: t.duration ?? 120 };
+        Object.assign(data, f.data);
+        box.querySelector('.t').textContent = title();
+        this._emit();
+      });
+      box.appendChild(form);
+      this._list.appendChild(box);
+    });
+  }
+
+  _renderSuggestions() {
+    if (!this._sugg) return;
+    const sugg = suggestReactions(this._hass?.states, this._config.triggers);
+    const key = JSON.stringify(sugg.map((s) => s.entity + s.mode));
+    if (key === this._suggKey) return;
+    this._suggKey = key;
+    this._sugg.innerHTML = '';
+    if (!sugg.length) { this._sugg.innerHTML = '<div class="empty">Nothing obvious to suggest — add reactions by hand above.</div>'; return; }
+    for (const s of sugg) {
+      const row = document.createElement('div');
+      row.className = 'sugg';
+      const st = this._hass.states[s.entity];
+      row.innerHTML = `<div class="what"><b></b><br><span></span></div><button>Add</button>`;
+      row.querySelector('b').textContent = `${MODES[s.mode].icon} ${MODES[s.mode].label}`;
+      row.querySelector('span').textContent = `${st?.attributes?.friendly_name || s.entity} — ${s.why}`;
+      row.querySelector('button').onclick = () => {
+        const { why, ...t } = s;
+        this._config.triggers.push(t);
+        this._suggKey = null;
+        this._renderList(); this._renderSuggestions(); this._emit();
+      };
+      this._sugg.appendChild(row);
+    }
+    if (sugg.length > 1) {
+      const all = document.createElement('div');
+      all.className = 'row';
+      all.style.marginTop = '8px';
+      all.innerHTML = '<button>Add all suggestions</button>';
+      all.querySelector('button').onclick = () => {
+        for (const { why, ...t } of sugg) this._config.triggers.push(t);
+        this._suggKey = null;
+        this._renderList(); this._renderSuggestions(); this._emit();
+      };
+      this._sugg.appendChild(all);
+    }
+  }
+}
+
+function hourToTime(h) {
+  const hh = Math.floor(h), mm = Math.round((h - hh) * 60);
+  return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+}
+
 /* ---------- the card ---------- */
 
 class PixelVillageCard extends HTMLElement {
+  static getConfigElement() {
+    return document.createElement('pixel-village-card-editor');
+  }
+
   static getStubConfig() {
     return { villagers: 6 };
   }
 
   setConfig(config) {
     if (!config) throw new Error('Invalid configuration');
+    if (config.triggers !== undefined && !Array.isArray(config.triggers)) throw new Error('triggers must be a list');
     this._config = {
       villagers: 6, fps: 15, show_status: true, sun_entity: 'sun.sun', triggers: [], ...config,
     };
@@ -2296,33 +2740,7 @@ class PixelVillageCard extends HTMLElement {
   }
 
   _matchTrigger() {
-    const states = this._hass?.states;
-    if (!states) return null;
-    const list = this._config.triggers || [];
-    // Of all recently activated scenes, only the latest one counts.
-    let latestScene = null;
-    list.forEach((t, i) => {
-      const st = states[t.entity];
-      if (!st || !t.entity.startsWith('scene.') || t.state !== undefined) return;
-      const ts = Date.parse(st.state);
-      if (isNaN(ts)) return;
-      const mins = (Date.now() - ts) / 60000;
-      if (mins > -1 && mins < (t.duration ?? 120) && (!latestScene || ts > latestScene.ts)) latestScene = { i, ts };
-    });
-    for (let i = 0; i < list.length; i++) {
-      const t = list[i];
-      if (!MODES[t.mode]) continue;
-      const st = states[t.entity];
-      if (!st) continue;
-      if (t.entity.startsWith('scene.') && t.state === undefined) {
-        if (latestScene?.i === i) return t;
-        continue;
-      }
-      const want = t.state === undefined ? ['on'] : [].concat(t.state).map(String);
-      const val = t.attribute ? String(st.attributes?.[t.attribute]) : st.state;
-      if (want.includes(val)) return t;
-    }
-    return null;
+    return evalReactions(this._config.triggers, this._hass?.states);
   }
 
   _updateMode() {
@@ -3653,6 +4071,7 @@ class PixelVillageCard extends HTMLElement {
 
 }
 
+if (!customElements.get('pixel-village-card-editor')) customElements.define('pixel-village-card-editor', PixelVillageCardEditor);
 if (!customElements.get('pixel-village-card')) {
   customElements.define('pixel-village-card', PixelVillageCard);
   window.customCards = window.customCards || [];
