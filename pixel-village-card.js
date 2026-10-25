@@ -115,7 +115,10 @@ const LAMPS = [[FIRE.x * S - 58, FIRE.y * S - 34], [FIRE.x * S + 64, FIRE.y * S 
 const SCREEN = { x0: 2, x1: 16, top: 94, base: 115 };
 // The screen is a panel turned toward the seats at the lower right: its near edge is on the left
 // (lower on screen), its far edge on the right (higher), like a wall seen at 45° (render px).
-const SCREEN_Q = { lx: 8, ltop: 300, lbot: 344, rx: 48, rtop: 284, rbot: 326 };
+const SCREEN_Q = { lx: 4, ltop: 297, lbot: 341, rx: 44 };
+// Every slanted edge uses the same clean 2:1 pixel stair (two across, one up).
+const stairY = (x, y0, x0 = SCREEN_Q.lx) => y0 - Math.floor((x - x0) / 2);
+SCREEN_Q.rtop = stairY(SCREEN_Q.rx, SCREEN_Q.ltop); SCREEN_Q.rbot = stairY(SCREEN_Q.rx, SCREEN_Q.lbot);
 const lerp = (a, b, u) => a + (b - a) * u;
 const PROJ = { x: 43, y: 120.5 };
 // Tiers wrap around a point in front of the screen and open toward it.
@@ -1887,48 +1890,55 @@ function amphiLanterns() {
 }
 
 // Rustic screen at the left of the scene: a slanted panel turned toward the seats, on a low deck.
+// All diagonals follow stairY so the pixel steps are even.
 function makeStage(snow) {
-  const ox = 0, oy = 268, c = mk(76, 96), g = c.getContext('2d'), Q = SCREEN_Q;
+  const ox = -8, oy = 262, c = mk(84, 100), g = c.getContext('2d'), Q = SCREEN_Q;
   const X = (x) => x - ox, Y = (y) => y - oy;
   const bark = ramp('#6a4428'), plank = ramp('#9a7a58'), deck = ramp('#a88a64'), st = ramp('#8a8680'), roof = ramp('#8a5a34');
-  const along = (u, a, b) => a + (b - a) * u;
-  const topAt = (x) => along((x - Q.lx) / (Q.rx - Q.lx), Q.ltop, Q.rtop), botAt = (x) => along((x - Q.lx) / (Q.rx - Q.lx), Q.lbot, Q.rbot);
-  // deck: its back edge runs under the panel, it reaches forward toward the seats
-  const fwd = [11, 9], b0 = [Q.lx - 5, Q.lbot + 2], b1 = [Q.rx + 5, Q.rbot + 2], f0 = [b0[0] + fwd[0], b0[1] + fwd[1]], f1 = [b1[0] + fwd[0], b1[1] + fwd[1]];
-  const T = (p) => [X(p[0]), Y(p[1])];
-  fillPoly(g, [b0, b1, f1, f0].map(T), snow ? '#e8eef6' : deck.l);
-  for (let k = 1; k < 4; k++) {
-    const u = k / 4, p = [along(u, b0[0], f0[0]), along(u, b0[1], f0[1])], q = [along(u, b1[0], f1[0]), along(u, b1[1], f1[1])];
-    line(g, Math.round(X(p[0])), Math.round(Y(p[1])), Math.round(X(q[0])), Math.round(Y(q[1])), deck.m, 1);
+  const topAt = (x) => stairY(x, Q.ltop), botAt = (x) => stairY(x, Q.lbot);
+  // deck: a parallelogram whose back edge runs under the panel and whose sides step forward 2:1
+  const x0 = Q.lx - 6, x1 = Q.rx + 6, depth = 10, back = (x) => stairY(x, Q.lbot + 3);
+  for (let x = x0; x <= x1 + depth; x++) {
+    const top = x <= x1 ? back(x) : back(x1) + Math.floor((x - x1) / 2);
+    const bot = x >= x0 + depth ? back(x - depth) + depth / 2 : back(x0) + Math.floor((x - x0) / 2);
+    if (bot <= top) continue;
+    P(g, X(x), Y(top), 1, bot - top, snow ? '#e8eef6' : deck.l);
+    for (let k = 1; k < 3; k++) { const y = top + Math.round(((bot - top) * k) / 3); P(g, X(x), Y(y), 1, 1, deck.m); }
+    // front face and fieldstone footing below the front edge
+    if (x >= x0 + depth - 1 || x === x0) {
+      P(g, X(x), Y(bot), 1, 3, deck.d);
+      P(g, X(x), Y(bot + 3), 1, 4, (x + Math.floor(bot / 1)) % 7 === 0 ? st.d : st.m);
+      P(g, X(x), Y(bot + 3), 1, 1, st.l);
+    }
+    if (x > x1) { P(g, X(x), Y(bot), 1, 3, st.d); P(g, X(x), Y(bot + 3), 1, 4, st.o); }
   }
-  fillPoly(g, [f0, f1, [f1[0], f1[1] + 3], [f0[0], f0[1] + 3]].map(T), deck.d);
-  fillPoly(g, [[f0[0], f0[1] + 3], [f1[0], f1[1] + 3], [f1[0], f1[1] + 7], [f0[0], f0[1] + 7]].map(T), st.m);
-  for (let u = 0.08; u < 1; u += 0.14) P(g, Math.round(X(along(u, f0[0], f1[0]))), Math.round(Y(along(u, f0[1], f1[1]) + 3)), 1, 4, st.d);
-  fillPoly(g, [b1, f1, [f1[0], f1[1] + 7], [b1[0], b1[1] + 7]].map(T), st.d);
   // plank backing inside the panel
   for (let x = Q.lx; x <= Q.rx; x++) {
-    const t = Math.round(topAt(x)), b = Math.round(botAt(x));
+    const t = topAt(x), b = botAt(x);
     P(g, X(x), Y(t), 1, b - t, x % 4 === 0 ? plank.d : x % 4 === 1 ? plank.l : plank.m);
+    if ((x - Q.lx) % 10 === 4) P(g, X(x), Y(t + 22), 3, 1, plank.o);
   }
-  for (let x = Q.lx + 2; x < Q.rx; x += 9) P(g, X(x), Y(Math.round(along(0.55, topAt(x), botAt(x)))), 3, 1, plank.o);
-  // posts at both ends: the near one in front, wrapped in ivy
-  P(g, X(Q.rx), Y(Q.rtop - 6), 3, Q.rbot - Q.rtop + 9, bark.m); P(g, X(Q.rx + 2), Y(Q.rtop - 6), 1, Q.rbot - Q.rtop + 9, bark.d);
-  P(g, X(Q.lx - 4), Y(Q.ltop - 7), 4, Q.lbot - Q.ltop + 10, bark.m); P(g, X(Q.lx - 4), Y(Q.ltop - 7), 1, Q.lbot - Q.ltop + 10, bark.l);
+  // posts: the far one behind, the near one in front wrapped in ivy
+  P(g, X(Q.rx + 1), Y(Q.rtop - 6), 3, Q.rbot - Q.rtop + 10, bark.m); P(g, X(Q.rx + 3), Y(Q.rtop - 6), 1, Q.rbot - Q.rtop + 10, bark.d);
+  P(g, X(Q.lx - 4), Y(Q.ltop - 7), 4, Q.lbot - Q.ltop + 11, bark.m); P(g, X(Q.lx - 4), Y(Q.ltop - 7), 1, Q.lbot - Q.ltop + 11, bark.l);
   for (let y = Q.ltop - 3; y < Q.lbot; y += 6) P(g, X(Q.lx - 3 + ((y >> 2) % 2)), Y(y), 1, 3, bark.o);
   if (!snow) for (let y = Q.ltop + 18; y < Q.lbot + 2; y += 3) P(g, X(Q.lx - 3 + Math.round(Math.sin(y * 0.5))), Y(y), 2, 2, y % 2 ? '#3a8a3a' : '#5aaa48');
-  // log beam and shingled cap following the slope
+  // log beam with a shingled cap, stepping exactly with the panel
   for (let x = Q.lx - 6; x <= Q.rx + 5; x++) {
-    const y = Math.round(topAt(x)) - 3;
+    const y = topAt(x) - 3;
     P(g, X(x), Y(y), 1, 3, bark.m); P(g, X(x), Y(y), 1, 1, bark.l); P(g, X(x), Y(y + 2), 1, 1, bark.d);
-    for (let k = 1; k <= 4; k++) P(g, X(x), Y(y - k), 1, 1, snow && k > 2 ? '#f4f8ff' : (x + (k % 2) * 3) % 6 === 0 ? roof.o : k === 4 ? roof.l : roof.m);
+    for (let k = 1; k <= 4; k++) {
+      const col = snow && k > 2 ? '#f4f8ff' : k === 4 ? roof.l : (Math.floor((x - Q.lx) / 6) + k) % 2 && (x - Q.lx) % 6 === 0 ? roof.o : roof.m;
+      P(g, X(x), Y(y - k), 1, 1, col);
+    }
   }
-  P(g, X(Q.lx - 7), Y(Math.round(topAt(Q.lx - 7)) - 3), 2, 3, '#d8b07a');
+  P(g, X(Q.lx - 7), Y(topAt(Q.lx - 7) - 3), 2, 3, '#d8b07a');
   // the rolled-up canvas under the beam
-  for (let x = Q.lx; x <= Q.rx; x++) { const y = Math.round(topAt(x)); P(g, X(x), Y(y), 1, 1, '#f8f2e2'); P(g, X(x), Y(y + 1), 1, 1, '#d8ccb0'); }
+  for (let x = Q.lx; x <= Q.rx; x++) { const y = topAt(x); P(g, X(x), Y(y), 1, 1, '#f8f2e2'); P(g, X(x), Y(y + 1), 1, 1, '#d8ccb0'); }
   if (!snow) {
-    const [px, py] = [f0[0] - 2, f0[1] - 1];
-    P(g, X(px), Y(py - 5), 7, 5, '#b0603e'); P(g, X(px), Y(py - 5), 7, 1, '#c87a52');
-    for (let k = 0; k < 4; k++) P(g, X(px + k * 2), Y(py - 8 + (k % 2)), 2, 2, k % 2 ? '#f0d040' : '#e85a6a');
+    const px = x0 + depth - 3, py = back(x0) + depth / 2;
+    P(g, X(px), Y(py - 6), 7, 5, '#b0603e'); P(g, X(px), Y(py - 6), 7, 1, '#c87a52');
+    for (let k = 0; k < 4; k++) P(g, X(px + k * 2), Y(py - 9 + (k % 2)), 2, 2, k % 2 ? '#f0d040' : '#e85a6a');
   }
   outline(c);
   return { cv: c, x: ox, y: oy };
@@ -3840,7 +3850,7 @@ class PixelVillageCard extends HTMLElement {
     const Q = SCREEN_Q;
     if (this._screen <= 0) return;
     for (let x = Q.lx + 1; x < Q.rx; x++) {
-      const u = (x - Q.lx) / (Q.rx - Q.lx), top = Math.round(lerp(Q.ltop, Q.rtop, u)) + 2, bot = Math.round(lerp(Q.lbot, Q.rbot, u)) - 1;
+      const u = (x - Q.lx) / (Q.rx - Q.lx), top = stairY(x, Q.ltop) + 2, bot = stairY(x, Q.lbot) - 1;
       const h = Math.round((bot - top) * this._screen);
       P(ctx, x, top, 1, h, u > 0.8 ? '#ddd4c0' : '#efe8d6');
       P(ctx, x, top + h, 1, 1, OUT);
@@ -3852,7 +3862,7 @@ class PixelVillageCard extends HTMLElement {
     const Q = SCREEN_Q, a = Q.lx + 2, b = Q.rx - 2;
     for (let x = a; x <= b; x++) {
       const u = (x - a) / (b - a), sx = Math.min(FILM_W - 1, Math.floor(u * FILM_W));
-      const top = Math.round(lerp(Q.ltop + 5, Q.rtop + 5, u)), bot = Math.round(lerp(Q.lbot - 3, Q.rbot - 3, u));
+      const top = stairY(x, Q.ltop) + 5, bot = stairY(x, Q.lbot) - 3;
       ctx.drawImage(cv, sx, 0, 1, FILM_H, x, top, 1, bot - top);
     }
   }
