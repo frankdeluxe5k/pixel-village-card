@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pixel Village Demo</title>
+<style>
+  :root { --bg: #f2f2f5; --card: #fff; --text: #1c1c22; --muted: #666a74; --line: #d8d8e0; --accent: #3f7a4a; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --bg: #16171c; --card: #22232a; --text: #ececf0; --muted: #a0a4ae; --line: #3a3b44; --accent: #6cc07a; }
+  }
+  :root[data-theme="dark"] { --bg: #16171c; --card: #22232a; --text: #ececf0; --muted: #a0a4ae; --line: #3a3b44; --accent: #6cc07a; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  p.lede { margin: 0 0 18px; color: var(--muted); }
+  pixel-village-card { display: block; border-radius: 12px; overflow: hidden; background: var(--card);
+    --secondary-text-color: var(--muted); box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+  .panel { margin-top: 18px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; display: grid; gap: 14px; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .row > label { min-width: 70px; color: var(--muted); font-size: 13px; }
+  input[type=range] { flex: 1; min-width: 160px; accent-color: var(--accent); }
+  button, select { font: inherit; font-size: 13px; padding: 5px 10px; border-radius: 8px; border: 1px solid var(--line);
+    background: transparent; color: var(--text); cursor: pointer; }
+  button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+  #clock { font-variant-numeric: tabular-nums; min-width: 48px; font-weight: 600; }
+  .hint { font-size: 13px; color: var(--muted); margin: 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Pixel Village</h1>
+  <p class="lede">A preview of the Home Assistant card. Scrub the clock, switch scenes, change the weather. Tap a villager to say hi.</p>
+  <pixel-village-card id="card"></pixel-village-card>
+  <div class="panel">
+    <div class="row">
+      <label for="hour">Time</label>
+      <input id="hour" type="range" min="0" max="23.99" step="0.05" value="13">
+      <span id="clock">13:00</span>
+      <button id="lapse" aria-pressed="false">Time-lapse</button>
+    </div>
+    <div class="row" id="modes"><label>Scene</label></div>
+    <div class="row">
+      <label for="weather">Weather</label>
+      <select id="weather">
+        <option value="sunny">Sunny</option><option value="partlycloudy">Partly cloudy</option>
+        <option value="cloudy">Cloudy</option><option value="rainy">Rainy</option>
+        <option value="lightning-rainy">Thunderstorm</option><option value="snowy">Snowy</option>
+        <option value="fog">Fog</option>
+      </select>
+    </div>
+    <p class="hint">In Home Assistant, the time comes from your server clock, and scenes come from whatever entities you map in the card config.</p>
+  </div>
+</main>
+<script src="pixel-village-card.js"></script>
+<script>
+  const card = document.getElementById('card');
+  const states = {
+    'weather.home': { state: 'sunny', attributes: {} },
+    'input_select.village_mode': { state: 'auto', attributes: {} },
+  };
+  const push = () => { card.hass = { states: { ...states }, config: {} }; };
+  card.setConfig({ villagers: 6, mode_entity: 'input_select.village_mode' });
+  card.previewHour = 13;
+  push();
+
+  const hour = document.getElementById('hour'), clock = document.getElementById('clock');
+  const show = (h) => {
+    const hh = Math.floor(h), mm = Math.floor((h - hh) * 60);
+    clock.textContent = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+  };
+  hour.addEventListener('input', () => { card.previewHour = +hour.value; show(+hour.value); push(); });
+
+  let lapse = null;
+  document.getElementById('lapse').addEventListener('click', (e) => {
+    const on = e.target.getAttribute('aria-pressed') !== 'true';
+    e.target.setAttribute('aria-pressed', on);
+    clearInterval(lapse);
+    if (on) lapse = setInterval(() => {
+      let h = (card.previewHour + 0.05) % 24;
+      card.previewHour = h; hour.value = h; show(h); push();
+    }, 250);
+  });
+
+  const modes = document.getElementById('modes');
+  const list = [['auto', 'Auto'], ['party', '🎉 Party'], ['movie', '🎬 Movie night'], ['cozy', '🕯️ Cozy'], ['away', '🎒 Away'], ['sleep', '🌙 Goodnight']];
+  for (const [m, label] of list) {
+    const b = document.createElement('button');
+    b.textContent = label;
+    b.setAttribute('aria-pressed', m === 'auto');
+    b.addEventListener('click', () => {
+      states['input_select.village_mode'] = { state: m, attributes: {} };
+      modes.querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', x === b));
+      push();
+    });
+    modes.appendChild(b);
+  }
+  document.getElementById('weather').addEventListener('change', (e) => {
+    states['weather.home'] = { state: e.target.value, attributes: {} };
+    push();
+  });
+</script>
+</body>
+</html>
