@@ -14,7 +14,7 @@ your home's clock, the weather, and whatever is happening in your house.
 - **Visual editor.** Set everything up from the card's configuration screen, with suggestions based on
   what's in your Home Assistant. No YAML needed (but YAML works too).
 - **Single file, zero dependencies.** It's a dashboard card that runs in the browser, so your Home
-  Assistant box only serves one ~230 KB file. No add-on, no container, no polling, no network requests.
+  Assistant box only serves one ~300 KB file. No add-on, no container, no polling, no network requests.
 - **Light enough for wall tablets.** Scenery, glows and sprites are drawn once and cached, so a frame
   takes about a millisecond on a desktop. Startup work is spread over several frames. It stops completely when
   the card is off screen or the tab is hidden, drops to 10 fps by itself on a device that can't keep
@@ -68,7 +68,8 @@ Add the card and open its editor. Everything is on one screen:
 Unavailable or unknown entities never match, and never-used scenes or buttons don't count as
 activated. A newer activation always cancels older ones, even once its own duration has run out.
 
-Besides the moods below, a reaction can send the village back to its **daily routine** (`mode: auto`).
+Besides the moods below, a reaction can send the village back to its **daily routine** (`mode: auto`),
+or bring a **village event** on demand (`mode: event:landscapers`, see [Events](#events)).
 That's handy for a "Good morning" scene that should end "Good night" and let the normal day play out.
 
 ### YAML
@@ -136,6 +137,34 @@ entries with `state:` to `state`, and everything else to `on`.
 | `cozy`    | Everyone indoors with warm lit windows and smoking chimneys |
 | `away`    | Everyone grabs a backpack and walking stick and heads off on an adventure. The last one out hangs a "BACK SOON!" sign on the coffee cart, and the first one home takes it down |
 
+### Events
+
+About once a day (you can choose rarely, daily or often), a visiting crew drops by during the day.
+Villagers and visitors wander over to watch, and each crew leaves the village as tidy as it found it.
+
+| event | `mode:` for a reaction | what happens |
+|---|---|---|
+| 🛒 Travelling merchant | `event:merchant` | Hauls a hand cart into the square, unrolls the canopy and sets out fruit, jars and cloth; people browse and buy |
+| 💼 Door-to-door salesman | `event:salesman` | Bowler hat and sample case; knocks on doors (someone home might buy, an empty house gets a shrug) and pitches to people in the street |
+| 🎨 Visiting artists | `event:artists` | Three artists chisel and paint a sculpture by the farm, then unveil it; it stays on show until bedtime |
+| ✂️ Landscapers | `event:landscapers` | Trim every shrub into a tidy dome, prune trees from a ladder and wheel the clippings away; the trims last the day |
+| 🎠 Travelling fair | `event:fair` | A striped tent, a hand-cranked carousel kids love and a ring toss; more visitors come, and it runs into the evening with lights |
+
+Events skip rain, snow and storms, and nights, movie nights, game nights, cozy evenings and adventures.
+Every dashboard shows the same event on the same day. Tie one to anything in your home with a reaction,
+for example a "Gardener visit" button, a "Market day" scene or your doorbell; the suggestions offer these
+when your entity names fit.
+
+```yaml
+events: true                 # default
+event_frequency: daily       # rare (a couple a week), daily or often (a few a day)
+triggers:
+  - entity: input_button.gardener_visit
+    when: activated
+    duration: 60
+    mode: event:landscapers
+```
+
 ### Driving it from automations
 
 Create an `input_select` (or `select`) with the options `auto, sleep, morning, work, meal, evening, party,
@@ -154,6 +183,7 @@ the tavern.
   leave again. More turn up for evenings, movie nights and parties; nobody visits at night.
 - **The mail carrier** cycles in every few minutes during the day, parks at two or three houses and
   walks a letter (or sometimes a parcel) to the door.
+- **Visiting crews** for the [events](#events): a merchant, a salesman, artists, landscapers and fair folk.
 - **A travelling band** of young rockers (drums, bass and two guitars) arrives for parties and plays in
   front of the tavern.
 - **Animals:** two dogs follow their owners and nap by the door at night, a cat lounges about and bolts
@@ -174,6 +204,8 @@ the tavern.
 | `triggers` | `[]` | Reactions, see above |
 | `show_status` | `true` | The one-line caption under the village |
 | `fps` | `15` | 2–30 |
+| `events` | `true` | Random village [events](#events) |
+| `event_frequency` | `daily` | `rare`, `daily` or `often` |
 | `seed` | `42` | Change it for a different set of villager looks |
 
 ## Interaction
@@ -183,7 +215,8 @@ some z's float out.
 
 ## Preview
 
-Open `demo.html` in a browser for a time slider, time-lapse, mood buttons and every weather condition.
+Open `demo.html` in a browser for a time slider, time-lapse, mood buttons, every weather condition and a
+button for each event.
 
 ## Troubleshooting
 

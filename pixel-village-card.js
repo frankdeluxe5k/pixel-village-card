@@ -4,11 +4,11 @@
  * and whatever is happening in your home (scenes, media players, alarm...).
  *
  * Everything is drawn procedurally: no image files, no dependencies.
- * The simulation runs on a 192x108 grid; art is drawn at 3x (576x324) in a
+ * The simulation runs on a 224x126 grid; art is drawn at 3x (672x378) in a
  * 16-bit arcade style. Sprites and scenery are rendered once and cached, and
  * the card only animates while it is actually on screen.
  */
-const PV_VERSION = '2.1.0';
+const PV_VERSION = '2.2.0';
 
 const W = 224, H = 126, HORIZON = 60; // simulation units
 const S = 3, RW = W * S, RH = H * S, HZ = HORIZON * S; // render pixels
@@ -47,9 +47,11 @@ function validateConfig(config) {
     const at = `triggers[${i + 1}]`;
     if (!t || typeof t !== 'object') throw new Error(`${at} must be an object with an entity and a mode`);
     if (t.entity !== undefined && typeof t.entity !== 'string') throw new Error(`${at}.entity must be an entity id`);
-    if (t.mode !== undefined && t.mode !== 'auto' && !MODES[t.mode]) throw new Error(`${at}.mode "${t.mode}" isn't a mood (use auto or one of: ${Object.keys(MODES).join(', ')})`);
+    if (t.mode !== undefined && t.mode !== 'auto' && !MODES[t.mode] && !eventOfMode(t.mode)) throw new Error(`${at}.mode "${t.mode}" isn't a mood (use auto, one of: ${Object.keys(MODES).join(', ')}, or an event: ${EVENT_MODES.join(', ')})`);
     if (t.when !== undefined && !REACTION_KINDS.includes(t.when)) throw new Error(`${at}.when "${t.when}" isn't one of: ${REACTION_KINDS.join(', ')}`);
   });
+  if (config.events !== undefined && typeof config.events !== 'boolean') throw new Error('events must be true or false');
+  if (config.event_frequency !== undefined && !['rare', 'daily', 'often'].includes(config.event_frequency)) throw new Error('event_frequency must be rare, daily or often');
   if (config.schedule !== undefined && (typeof config.schedule !== 'object' || Array.isArray(config.schedule))) throw new Error('schedule must be a map of times');
   for (const [k, v] of Object.entries(config.schedule || {})) {
     if (!(k in DEFAULT_SCHEDULE)) throw new Error(`schedule.${k} isn't a schedule entry (use: ${Object.keys(DEFAULT_SCHEDULE).join(', ')})`);
@@ -221,7 +223,14 @@ const NAV = (() => {
   for (const i of onSquare) for (const j of onSquare) if (i < j && owner[i] !== owner[j] && !adj[i].includes(j)) { adj[i].push(j); adj[j].push(i); }
   return { nodes, adj };
 })();
-const blocked = (x, y) => FOOTPRINTS.some(([x0, y0, x1, y1]) => x > x0 && x < x1 && y > y0 && y < y1);
+// Temporary footprints of event props (carts, stalls, sculptures), per card; every card's count, like FOOTPRINTS.
+const EVENT_BLOCKS = new Map();
+const inRect = (x, y, r) => x > r[0] && x < r[2] && y > r[1] && y < r[3];
+const blocked = (x, y) => {
+  for (const r of FOOTPRINTS) if (inRect(x, y, r)) return true;
+  for (const list of EVENT_BLOCKS.values()) for (const r of list) if (inRect(x, y, r)) return true;
+  return false;
+};
 function clearPath(x0, y0, x1, y1) {
   const n = Math.ceil(Math.hypot(x1 - x0, y1 - y0));
   for (let i = 1; i < n; i++) if (blocked(x0 + ((x1 - x0) * i) / n, y0 + ((y1 - y0) * i) / n)) return false;
@@ -284,6 +293,11 @@ const GLYPHS = {
   dots:  ['##.##.##', '##.##.##'],
   mail:  ['#######', '##...##', '#.#.#.#', '#######'],
   box:   ['######', '#..#.#', '######', '#..#.#', '######'],
+  coin:  ['..#..', '.####', '#.#..', '.###.', '..#.#', '####.', '..#..'],
+  star:  ['..#..', '..#..', '#####', '.###.', '.#.#.'],
+  cross: ['#...#', '.#.#.', '..#..', '.#.#.', '#...#'],
+  q:     ['.###.', '#...#', '...#.', '..#..', '.....', '..#..'],
+  spark: ['..#..', '..#..', '##.##', '..#..', '..#..'],
 };
 
 /* ---------- small helpers ---------- */
@@ -606,6 +620,7 @@ function faceOf(v) {
   const r = mulberry32(Math.floor((v.seed || 0) * 1e6) + v.id * 131 + 7), pick = (a) => a[Math.floor(r() * a.length)];
   const kid = v.small;
   return (L.faceT = {
+    ...{
     eye: pick(kid ? ['round', 'round', 'lash'] : ['round', 'round', 'lash', 'narrow']),
     iris: pick(IRIS),
     brow: pick(kid ? ['flat', 'arch', 'soft'] : ['flat', 'arch', 'thick', 'soft', 'worried', 'bold']),
@@ -615,6 +630,8 @@ function faceOf(v) {
     freckles: r() < (kid ? 0.45 : 0.15),
     glasses: !kid && !L.beard && r() < 0.15,
     stache: !L.beard && !kid && r() < 0.12,
+    },
+    ...L.face,
   });
 }
 // Brows as [col, row] pixels in head space: near eye then far eye.
@@ -770,6 +787,16 @@ const KEYS = {
   // fretting hand on the neck, strumming hand at the body; down-strums dip the body
   band_bass: [{ f: [-1, 3], b: [14, -2] }, { f: [0, 4], b: [14, -2], bob: 1 }, { f: [-1, 3], b: [13, -2] }, { f: [0, 4], b: [13, -2], bob: 1 }],
   band_guitar: [{ f: [0, 2], b: [13, -2] }, { f: [1, 4], b: [13, -2], bob: 1 }, { f: [0, 3], b: [12, -2] }, { f: [1, 5], b: [12, -2], bob: 1 }],
+  // event crews
+  knock: [{ f: [5, -3] }, { f: [6, -2] }],
+  shrug: [{ f: [4, -1], b: [-4, -1], bob: -1 }],
+  paint: [{ f: [6, -4] }, { f: [6, -1] }, { f: [5, -6] }, { f: [6, -2] }],
+  trim: [{ f: [6, 0], b: [5, 1] }, { f: [6, 1], b: [5, 2] }],
+  prune: [{ f: [4, -7], b: [3, -6] }, { f: [5, -8], b: [4, -7] }],
+  crank: [{ f: [6, 0] }, { f: [7, -2] }, { f: [6, -4] }, { f: [5, -2] }],
+  toss: [{ f: [2, -6] }, { f: [6, -3] }, { f: [7, 0] }, { f: [4, 3] }],
+  announce: [{ f: [6, -5] }, { f: [7, -3] }],
+  juggle: [{ f: [5, -2], b: [3, 1] }, { f: [5, 1], b: [3, -2] }],
 };
 // pose -> [keyframe set, frames per second, playback order]
 const ANIM = {
@@ -790,8 +817,19 @@ const ANIM = {
   handheld: ['handheld', 3, [0, 1, 0, 2, 1, 0]], controller: ['controller', 7, [0, 1, 2, 1]],
   band_drums: ['band_drums', 7, [0, 1, 0, 1, 0, 1, 2, 1]], band_bass: ['band_bass', 4, [0, 1, 2, 3]],
   band_guitar: ['band_guitar', 7, [0, 1, 2, 3]],
+  pull: [null, 10, [0, 1, 2, 3, 4, 5]], push: [null, 10, [0, 1, 2, 3, 4, 5]],
+  knock: ['knock', 4, [0, 1, 0, 1, 0, 0, 0, 0]], shrug: ['shrug', 1, [0]], paint: ['paint', 5, [0, 1, 2, 3]],
+  trim: ['trim', 6, [0, 1]], prune: ['prune', 5, [0, 1]], crank: ['crank', 5, [0, 1, 2, 3]],
+  toss: ['toss', 4, [0, 0, 1, 2, 3, 3]], announce: ['announce', 2, [0, 1]], juggle: ['juggle', 5, [0, 1]],
 };
-const LIFT = { dance: [0, 2, 3, 2], kidplay: [0, 2, 3, 2] };
+const LIFT = { dance: [0, 2, 3, 2], kidplay: [0, 2, 3, 2], prune: [4, 4, 4, 4] };
+// Actions that simply play a pose of another name (event crews and onlookers).
+const ACTION_POSE = {
+  build: 'setup', sell: 'chat', pitch: 'chat', browse: 'idle', admire: 'idle', chisel: 'sign', cheer: 'dance', hitch: 'setup',
+  knock: 'knock', shrug: 'shrug', paint: 'paint', trim: 'trim', prune: 'prune', crank: 'crank', toss: 'toss', announce: 'announce', juggle: 'juggle',
+};
+// Tools held for a pose (by frame where it matters).
+const POSE_TOOL = { paint: () => 'brush', trim: () => 'shears', prune: () => 'shears', toss: (f) => (f < 2 ? 'ring' : null), juggle: () => 'balls' };
 
 // Shafted tools drawn along a direction: hoe blade, axe head or hammer head at the tip.
 function drawHafted(g, kind, [hx, hy], [dx, dy]) {
@@ -819,7 +857,87 @@ Object.assign(HATS, {
   },
   beanie: { ox: -1, oy: -3, map: { R: '#3a8ac8', r: '#24609a', Q: '#6ab0f0' }, rows: HATS.woodcutter.rows },
   cap: { ox: -1, oy: -3, map: { C: '#3a9a5a', c: '#246a3e' }, rows: ['...CCCCCC.....', '..CCCCCCCC....', '.CCCCCCCCCC...', '.ccccccccccccc'] },
+  // event crews
+  flatcap: { ox: -1, oy: -2, map: { F: '#7a6a54', f: '#54483a', h: '#9a8a70' }, rows: ['..FhFFFFF.....', '.FFFFFFFFFF...', '.fffffffffffff'] },
+  redcap: { ox: -1, oy: -2, map: { F: '#c83a3a', f: '#8a2626', h: '#e86a5a' }, rows: ['..FhFFFFF.....', '.FFFFFFFFFF...', '.fffffffffffff'] },
+  bowler: { ox: -1, oy: -4, map: { B: '#3a2a20', b: '#22160e', h: '#5e4634', r: '#7a2a2a' }, rows: ['....BBBBB.....', '...BhBBBBB....', '...BBBBBBB....', '...rrrrrrr....', '.bbbbbbbbbbb..'] },
+  beret: { ox: -1, oy: -3, map: { R: '#c83a3a', r: '#8a2626', h: '#e86a5a' }, rows: ['.....R........', '..RhRRRRRR....', '.RRRRRRRRRRR..', '..rrrrrrrrr...'] },
+  beret2: { ox: -1, oy: -3, map: { R: '#2a3a6a', r: '#1a2444', h: '#4a5a9a' }, rows: ['.....R........', '..RhRRRRRR....', '.RRRRRRRRRRR..', '..rrrrrrrrr...'] },
+  workcap: { ox: -1, oy: -3, map: { C: '#e07a2a', c: '#a8541a', h: '#f8a050' }, rows: ['...ChCCCC.....', '..CCCCCCCC....', '.CCCCCCCCCC...', '.ccccccccccccc'] },
+  tophat: { ox: 0, oy: -7, map: { T: '#26222e', t: '#16121c', h: '#4a4656', R: '#c83a3a' }, rows: ['...ThTTTT...', '...ThTTTT...', '...TTTTTT...', '...TTTTTT...', '...RRRRRR...', '.tttttttttt.'] },
 });
+
+// Event crew looks: each role builds a look from the guest RNG. `outfit` lists garment pieces drawn by
+// drawOutfit, so a new role is mostly data. `face` overrides any of faceOf's traits.
+const CREW_LOOKS = {
+  merchant: (p, rnd) => ({ shirt: '#ece0c4', pants: '#5a4a3a', vest: p(['#2f6a4a', '#7a2a3a', '#3a4a7a']), outfit: ['waistcoat', 'satchel'], hat: 'flatcap', style: 'short', beard: rnd() < 0.5 }),
+  salesman: (p) => ({ shirt: '#7a5434', pants: '#6a4a2e', tie: p(['#b83030', '#2a5a9a', '#3a7a3a']), outfit: ['suit'], hat: 'bowler', style: 'short', face: { mouth: 'grin', glasses: false } }),
+  artist: (p, rnd, i) => ({
+    shirt: ['#e8b8c8', '#b8d8e8', '#e8e0a8'][i % 3], pants: p(['#3a4a6a', '#5a3a5a', '#4a4a3a']), outfit: ['smock'],
+    hat: ['beret', 'beret2', null][i % 3], style: ['long', 'messy', 'swoop'][i % 3], beard: i === 1 && rnd() < 0.6,
+  }),
+  landscaper: (p, rnd) => ({ shirt: p(['#e8d8b0', '#c8d8e8', '#e8e8e0']), pants: '#3a6a3a', outfit: ['overalls'], hat: 'workcap', style: 'short', beard: rnd() < 0.3 }),
+  ringmaster: () => ({ shirt: '#c03030', pants: '#2a2a34', outfit: ['tailcoat'], hat: 'tophat', style: 'short', face: { stache: true, mouth: 'grin' } }),
+  fairfolk: (p, rnd, i) => ({ shirt: '#f4f0e6', pants: p(['#3a3a6a', '#4a3a2a']), stripe: ['#d03a3a', '#3a6ad0', '#2a8a5a'][i % 3], outfit: ['stripes', 'suspenders'], hat: i % 2 ? 'redcap' : null, style: p(['short', 'long', 'messy']) }),
+};
+
+// Garment pieces for crew looks, drawn over the plain shirt. Returns false when the piece replaces the belt.
+function drawOutfit(g, L, x0, tt, tb, w, h, shirt, skin) {
+  let belt = true;
+  for (const piece of L.outfit) {
+    switch (piece) {
+      case 'waistcoat': {
+        const vs = ramp(L.vest);
+        P(g, x0, tt + 2, 3, h - 3, vs.m); P(g, x0 + 6, tt + 2, 3, h - 3, vs.d); P(g, x0, tt + 2, 1, h - 3, vs.l);
+        P(g, x0 + 2, tt + 1, 1, 1, vs.m); P(g, x0 + 6, tt + 1, 1, 1, vs.d);
+        for (let r = tt + 3; r < tb - 1; r += 2) P(g, x0 + 2, r, 1, 1, '#e8c050');
+        break;
+      }
+      case 'suit': {
+        // jacket is the shirt colour; white shirt and tie in the open V, lapels and buttons
+        P(g, x0 + 3, tt, 3, 3, '#f4f0e6'); P(g, x0 + 4, tt + 3, 1, 1, '#f4f0e6');
+        P(g, x0 + 4, tt + 1, 1, 4, L.tie); P(g, x0 + 4, tt + 5, 1, 1, ramp(L.tie).d);
+        P(g, x0 + 2, tt, 1, 4, shirt.d); P(g, x0 + 6, tt, 1, 4, shirt.d);
+        P(g, x0 + 5, tt + 6, 1, 1, '#e8c050'); P(g, x0 + 1, tt + 3, 2, 1, '#f4f0e6');
+        belt = false;
+        break;
+      }
+      case 'tailcoat': {
+        P(g, x0 + 3, tt, 3, h - 2, '#f4f0e6'); P(g, x0 + 3, tt + 1, 3, 1, '#1a1a22'); P(g, x0 + 4, tt + 1, 1, 1, '#3a3a46');
+        for (let r = tt + 3; r < tb - 1; r += 2) { P(g, x0 + 2, r, 1, 1, '#e8c050'); P(g, x0 + 6, r, 1, 1, '#e8c050'); }
+        P(g, x0 - 1, tb - 2, 2, 4, shirt.d); // coat tails
+        belt = false;
+        break;
+      }
+      case 'smock': {
+        P(g, x0 + 2, tt + 4, 3, 2, shirt.d); // pocket
+        const dots = [['#e04848', 1, 3], ['#3a8ae0', 6, 2], ['#f0c030', 4, 6], ['#3aa86a', 2, 7]];
+        for (const [c, dx, dy] of dots) if (dy < h - 1) P(g, x0 + dx, tt + dy, 1, 1, c);
+        belt = false;
+        break;
+      }
+      case 'overalls': {
+        const ov = ramp(L.pants);
+        P(g, x0 + 2, tt + 2, 5, h - 2, ov.m); P(g, x0 + 6, tt + 2, 1, h - 2, ov.d);
+        P(g, x0, tt + 5, w, h - 5, ov.m); P(g, x0, tt + 5, 1, h - 5, ov.l); P(g, x0 + w - 1, tt + 5, 1, h - 5, ov.d);
+        P(g, x0 + 2, tt, 1, 2, ov.d); P(g, x0 + 6, tt, 1, 2, ov.d);
+        P(g, x0 + 2, tt + 2, 1, 1, '#d8d8e0'); P(g, x0 + 6, tt + 2, 1, 1, '#d8d8e0');
+        P(g, x0 + 3, tt + 3, 3, 2, ov.l);
+        belt = false;
+        break;
+      }
+      case 'stripes': {
+        const st = ramp(L.stripe);
+        for (let r = 1; r < h - 1; r += 2) { P(g, x0, tt + r, w, 1, st.m); P(g, x0 + w - 2, tt + r, 2, 1, st.d); }
+        break;
+      }
+      case 'suspenders':
+        P(g, x0 + 2, tt, 1, h - 1, '#3a2a24'); P(g, x0 + 6, tt, 1, h - 1, '#3a2a24');
+        break;
+    }
+  }
+  return belt;
+}
 
 const SIT_POSES = new Set(['sit', 'eat', 'watch', 'lutesit', 'laptop', 'sip', 'handheld', 'controller', 'band_drums']);
 const SHOE = ramp('#4a3022');
@@ -945,6 +1063,8 @@ function drawTorso(g, v, tt, tb, shirt, pants, skin) {
       P(g, x0, tt + 3, w, 1, shirt.h);
       belt = false;
       break;
+    default:
+      if (v.look.outfit) belt = drawOutfit(g, v.look, x0, tt, tb, w, h, shirt, skin);
   }
   if (belt) { P(g, x0, tb - 1, w, 1, '#3a2418'); P(g, x0 + 5, tb - 1, 2, 1, '#e0b040'); }
 }
@@ -1024,6 +1144,23 @@ function drawTool(g, tool, hx, hy, frame, tt, tb) {
       P(g, hx - 2, hy + 1, 7, 6, METAL.m); P(g, hx - 2, hy + 1, 2, 6, METAL.l); P(g, hx + 3, hy + 1, 2, 6, METAL.d);
       P(g, hx - 2, hy + 3, 7, 1, METAL.o); P(g, hx - 1, hy + 1, 5, 1, '#5ab0f0');
       break;
+    case 'shears': { // hedge shears: two long blades, open and shut by frame
+      line(g, hx - 3, hy + 1, hx, hy, WOOD.m, 1);
+      if (frame % 2) { line(g, hx, hy, hx + 8, hy - 3, METAL.h, 1); line(g, hx, hy, hx + 8, hy + 1, METAL.m, 1); }
+      else { line(g, hx, hy, hx + 9, hy - 1, METAL.h, 1); line(g, hx, hy + 1, hx + 9, hy, METAL.m, 1); }
+      break;
+    }
+    case 'brush':
+      line(g, hx - 1, hy + 2, hx + 3, hy - 3, WOOD.l, 1); P(g, hx + 3, hy - 5, 2, 2, ['#e04848', '#3a8ae0', '#f0c030'][frame % 3]);
+      break;
+    case 'ring':
+      P(g, hx - 2, hy - 4, 4, 1, '#f0c030'); P(g, hx - 2, hy - 1, 4, 1, '#f0c030'); P(g, hx - 3, hy - 3, 1, 2, '#f0c030'); P(g, hx + 2, hy - 3, 1, 2, '#f0c030');
+      break;
+    case 'balls': {
+      const pts = frame % 2 ? [[hx - 2, hy - 9, '#e04848'], [hx + 3, hy - 6, '#f0c030'], [hx - 5, hy - 4, '#3a8ae0']] : [[hx + 1, hy - 10, '#e04848'], [hx - 4, hy - 7, '#f0c030'], [hx + 3, hy - 3, '#3a8ae0']];
+      for (const [x, y, c] of pts) { P(g, x, y, 2, 2, c); P(g, x, y, 1, 1, '#ffffff'); }
+      break;
+    }
     case 'pour':
       P(g, hx, hy - 2, 7, 5, METAL.m); P(g, hx, hy - 2, 7, 1, METAL.l); P(g, hx, hy, 7, 1, METAL.o);
       P(g, hx + 7, hy - 2, 1, 2, '#5ab0f0');
@@ -1042,6 +1179,17 @@ function drawCarry(g, carry, hx, hy, tt) {
     P(g, hx, hy - 3, 5, 4, '#ffffff'); P(g, hx, hy - 3, 5, 1, '#d8d8e0'); P(g, hx + 2, hy - 2, 1, 1, '#c83a3a');
   } else if (carry === 'package') {
     P(g, AX + 2, tt + 1, 9, 7, '#c8a068'); P(g, AX + 2, tt + 1, 9, 1, '#e0bc88'); P(g, AX + 6, tt + 1, 1, 7, '#f0e0b0'); P(g, AX + 10, tt + 2, 1, 6, '#a07840');
+  } else if (carry === 'crate') {
+    const cr = ramp('#b08048');
+    P(g, AX + 2, tt + 1, 10, 7, cr.m); P(g, AX + 2, tt + 1, 10, 1, cr.l); P(g, AX + 2, tt + 4, 10, 1, cr.d); P(g, AX + 11, tt + 1, 1, 7, cr.d);
+    P(g, AX + 4, tt, 2, 1, '#e04848'); P(g, AX + 7, tt, 2, 1, '#f0c030');
+  } else if (carry === 'case') {
+    const cs = ramp('#6a3a22');
+    P(g, hx - 3, hy, 7, 5, cs.m); P(g, hx - 3, hy, 7, 1, cs.l); P(g, hx + 3, hy, 1, 5, cs.d); P(g, hx - 1, hy - 1, 3, 1, cs.o); P(g, hx, hy + 2, 1, 1, '#e8c050');
+  } else if (carry === 'ladder') {
+    const wd = ramp('#b8905a');
+    line(g, AX - 12, tt + 5, AX + 13, tt - 7, wd.m, 1); line(g, AX - 11, tt + 8, AX + 14, tt - 4, wd.d, 1);
+    for (let k = 0; k < 6; k++) { const x = AX - 9 + k * 4, y = tt + 4 - Math.round(k * 2); line(g, x, y, x + 1, y + 3, wd.l, 1); }
   } else if (carry === 'sign') {
     const sw = ramp('#d8b070');
     P(g, AX + 2, tt, 14, 10, sw.m); P(g, AX + 2, tt, 14, 1, sw.l);
@@ -1059,13 +1207,15 @@ function buildVillager(v, pose, frame, carry, gear) {
   const sit = SIT_POSES.has(pose);
   let back = child ? [-1, 5] : [-1, 6], front = child ? [1, 5] : [1, 6], tool = null, bob = 0, dir = null;
   let legs = [0, 0, 0, 0];
-  if (pose === 'walk') {
+  if (pose === 'walk' || pose === 'pull' || pose === 'push') {
     const ph = (frame / 6) * Math.PI * 2, cs = Math.cos(ph), sn = Math.sin(ph);
     const fo = Math.round(3 * cs);
     legs = [-fo, sn < -0.6 ? 1 : 0, fo, sn > 0.6 ? 1 : 0];
     bob = -Math.round(Math.abs(sn));
     front = [1 - Math.round(2.5 * cs), 6 - (Math.abs(cs) > 0.7 ? 1 : 0)];
     back = [-1 + Math.round(2.5 * cs), 6 - (Math.abs(cs) > 0.7 ? 1 : 0)];
+    if (pose === 'pull') { front = [-6, 4]; back = [-7, 4]; } // hauling a cart behind
+    if (pose === 'push') { front = [6, 4]; back = [5, 4]; } // pushing a barrow ahead
   } else if (ANIM[pose]) {
     const k = KEYS[ANIM[pose][0]][frame] || KEYS[ANIM[pose][0]][0];
     if (k.f) front = k.f;
@@ -1090,11 +1240,13 @@ function buildVillager(v, pose, frame, carry, gear) {
     case 'handheld': tool = 'handheld' + (v.id % 2); break;
     case 'controller': tool = 'pad'; break;
     case 'band_drums': case 'band_bass': case 'band_guitar': tool = pose.slice(5); break;
+    default: if (POSE_TOOL[pose]) tool = POSE_TOOL[pose](frame);
   }
   if (carry === 'log') { back = [-1, -3]; front = [2, -3]; }
   else if (carry === 'bucket' && pose !== 'water') { front = [1, 6]; tool = 'bucket'; }
   else if (carry === 'sign') { back = [4, 2]; front = [5, 1]; }
-  else if (carry === 'package') { back = [4, 3]; front = [6, 2]; }
+  else if (carry === 'package' || carry === 'crate') { back = [4, 3]; front = [6, 2]; }
+  else if (carry === 'ladder') { back = [3, -3]; front = [5, -2]; }
   else if (carry === 'mail') front = [4, -1];
   const stick = gear && !tool && !carry && (pose === 'walk' || pose === 'idle');
   if (stick) front = [4, 3];
@@ -1102,25 +1254,27 @@ function buildVillager(v, pose, frame, carry, gear) {
 
   if (gear) drawPack(g, tt);
   limb(g, sb, hb, { m: shirt.d, l: shirt.m }, { m: skin.d, l: skin.m, d: skin.o }, false);
+  if (carry === 'case') drawCarry(g, 'case', hb[0], hb[1], tt); // sample case swings from the far hand
   drawLegs(g, legs, sit, child, legLen, pants, skin, v.job === 'band' ? '#f0f0f0' : SHOE.d);
   if (!sit && tb < FY - legLen) P(g, AX - 4, tb + 1, 9, FY - legLen - tb, pants.m);
   drawTorso(g, v, tt, tb, shirt, pants, skin);
   if (v.job === 'carrier') drawSkirt(g, tb, pants, sit);
+  if (L.outfit?.includes('smock') && !sit) { P(g, AX - 4, tb, 9, 2, shirt.m); P(g, AX - 4, tb, 1, 2, shirt.l); P(g, AX + 3, tb, 2, 2, shirt.d); P(g, AX - 4, tb + 1, 9, 1, shirt.d); }
 
   const eyes = drawHead(g, v, hy, skin, hair);
-  if (v.job === 'mail') { line(g, AX + 2, tt, AX - 3, tb - 3, '#5a3a20', 1); P(g, AX - 7, tb - 4, 5, 4, '#8a5a30'); P(g, AX - 7, tb - 4, 5, 1, '#a87a48'); }
+  if (v.job === 'mail' || L.outfit?.includes('satchel')) { line(g, AX + 2, tt, AX - 3, tb - 3, '#5a3a20', 1); P(g, AX - 7, tb - 4, 5, 4, '#8a5a30'); P(g, AX - 7, tb - 4, 5, 1, '#a87a48'); }
   if (gear) line(g, AX - 3, tt + 1, AX + 1, tt + 5, '#4a2a18', 1);
 
   limb(g, sf, hf, shirt, skin, true);
   if (tool === 'hoe' || tool === 'axe' || tool === 'hammer') drawHafted(g, tool, hf, dir || [0.8, 0.6]);
   else if (INSTRUMENTS.includes(tool)) drawInstrument(g, v, tool, hf, hb, tt, skin);
   else if (tool) drawTool(g, tool, hf[0], hf[1], frame, tt, tb);
-  if (carry && carry !== 'bucket') drawCarry(g, carry, hf[0], hf[1], tt);
+  if (carry && carry !== 'bucket' && carry !== 'case') drawCarry(g, carry, hf[0], hf[1], tt);
   if (stick) {
     line(g, hf[0] + 1, hf[1] - 9, hf[0] + 2, FY, '#9a6a3a', 2);
     P(g, hf[0], hf[1] - 11, 3, 3, '#6a4020');
   }
-  if (stick || (tool && !['popcorn', 'lute', 'bowl', 'spoon', 'mug', 'handheld0', 'handheld1', 'pad', ...INSTRUMENTS].includes(tool))) {
+  if (stick || (tool && !['popcorn', 'lute', 'bowl', 'spoon', 'mug', 'handheld0', 'handheld1', 'pad', 'balls', ...INSTRUMENTS].includes(tool))) {
     P(g, hf[0] - 1, hf[1] - 1, 3, 3, skin.m); P(g, hf[0] - 1, hf[1] - 1, 1, 1, skin.l);
   }
   outline(c);
@@ -1493,16 +1647,38 @@ function makeTree(kind, size, seed, snow, season) {
 }
 
 // Front Range shrubs, drawn straight into a prop sprite.
-function drawShrub(g, kind, cx, by, r, snow, season) {
+// Shrubs around the village (render px): kind, x, ground y, size.
+const SHRUBS = [
+  ['gambel', 156, 334, 6], ['rabbit', 376, 340, 6], ['juniper', 424, 376, 7], ['rose', 508, 376, 6], ['sage', 250, 288, 5],
+  ['gambel', 470, 250, 6], ['juniper', 660, 300, 6], ['rabbit', 92, 248, 5], ['gambel', 4, 374, 6], ['sage', 128, 322, 4],
+  ['juniper', 12, 362, 8], ['gambel', -3, 349, 6],
+];
+function shrubProp([kind, bx, by, br], snow, season, trimmed) {
+  const w = br * 5 + 6, h = br * 3 + 6, x = bx - (w >> 1) - 2, y = by - h - 1;
+  const cv = mk(w + 4, h + 4), g = cv.getContext('2d');
+  g.translate(-x, -y); drawShrub(g, kind, bx, by, br, snow, season, trimmed); outline(cv);
+  return { cv, x, y, sortY: by / S - 0.2 };
+}
+
+function drawShrub(g, kind, cx, by, r, snow, season, trimmed = false) {
   const rnd = mulberry32(Math.round(cx * 7 + by)), w = r * 5 + 6, h = r * 3 + 6, ox = cx - (w >> 1), oy = by - h + 1;
   const cl = [];
   // leaf clusters fill a dome: a full row along the ground, then random clumps under the dome's curve
   const low = kind === 'sage', tall = kind === 'gambel' || kind === 'juniper';
-  const half = r * (low ? 1.75 : 1.3), dome = r * (low ? 0.75 : tall ? 2.0 : 1.55), base = h - 2 - r * 0.45, mid = w >> 1;
+  const half = r * (low ? 1.75 : 1.3), dome = r * (low ? 0.75 : tall ? 2.0 : 1.55) * (trimmed ? 0.85 : 1), base = h - 2 - r * 0.45, mid = w >> 1;
   for (let u = -0.8; u <= 0.81; u += 0.4) cl.push({ x: mid + u * half, y: base - rnd() * 1.5, r: r * 0.55, ry: r * (low ? 0.42 : 0.5) });
-  for (let i = 0; i < (low ? 5 : 9); i++) {
-    const u = rnd() * 2 - 1, lift = Math.sqrt(1 - u * u) * dome * (0.35 + rnd() * 0.65);
-    cl.push({ x: mid + u * half * 0.85, y: base - lift, r: r * (0.42 + rnd() * 0.2), ry: r * (low ? 0.38 : 0.48) });
+  if (trimmed) {
+    // freshly clipped: an even, rounded dome of same-sized clumps
+    for (let i = 0; i < (low ? 5 : 8); i++) {
+      const u = -0.85 + (1.7 * i) / ((low ? 5 : 8) - 1), lift = Math.sqrt(1 - u * u) * dome * 0.8;
+      cl.push({ x: mid + u * half * 0.8, y: base - lift, r: r * 0.5, ry: r * (low ? 0.38 : 0.46) });
+    }
+    cl.push({ x: mid, y: base - dome * 0.55, r: r * 0.62, ry: r * 0.5 });
+  } else {
+    for (let i = 0; i < (low ? 5 : 9); i++) {
+      const u = rnd() * 2 - 1, lift = Math.sqrt(1 - u * u) * dome * (0.35 + rnd() * 0.65);
+      cl.push({ x: mid + u * half * 0.85, y: base - lift, r: r * (0.42 + rnd() * 0.2), ry: r * (low ? 0.38 : 0.48) });
+    }
   }
   if (kind === 'gambel' && season === 'winter') {
     for (let i = 0; i < 9; i++) line(g, cx + Math.round((rnd() - 0.5) * r * 2.5), by, cx + Math.round((rnd() - 0.5) * r * 3.5), by - Math.round(r * (1 + rnd())), '#6a5040', 1);
@@ -1511,7 +1687,7 @@ function drawShrub(g, kind, cx, by, r, snow, season) {
   let pal = FOLIAGE[kind];
   if (kind === 'gambel') pal = FOLIAGE.gambel[season];
   if (kind === 'rose' && season === 'winter') pal = ['#3a2a22', '#5a3a2a', '#6a4a32', '#7a5a3a', '#8a6a4a'];
-  const cv = paintClusters(w, h, cl, pal, { seed: Math.round(cx), noise: 0.5, spiky: kind === 'juniper' ? 0.45 : kind === 'sage' ? 0.3 : 0.15, snow });
+  const cv = paintClusters(w, h, cl, pal, { seed: Math.round(cx), noise: trimmed ? 0.25 : 0.5, spiky: trimmed ? 0 : kind === 'juniper' ? 0.45 : kind === 'sage' ? 0.3 : 0.15, snow });
   g.drawImage(cv, ox, oy);
   if (snow) return;
   const dots = (cols, k, yMax) => {
@@ -1523,7 +1699,7 @@ function drawShrub(g, kind, cx, by, r, snow, season) {
   };
   if (kind === 'rabbit' && (season === 'fall' || season === 'summer')) {
     // golden flower heads across the top
-    for (const c0 of cl) for (let k = 0; k < 4; k++) P(g, Math.round(ox + c0.x + (rnd() - 0.5) * c0.r * 1.6), Math.round(oy + c0.y - c0.ry * (0.6 + rnd() * 0.4)), 2, 1, k % 2 ? '#f8e060' : '#e8c030');
+    for (const c0 of cl) for (let k = 0; k < (trimmed ? 1 : 4); k++) P(g, Math.round(ox + c0.x + (rnd() - 0.5) * c0.r * 1.6), Math.round(oy + c0.y - c0.ry * (0.6 + rnd() * 0.4)), 2, 1, k % 2 ? '#f8e060' : '#e8c030');
   }
   if (kind === 'juniper') dots(['#8ab0d8', '#6a90c0'], 6, 1);
   if (kind === 'rose') dots(season === 'summer' || season === 'spring' ? ['#f080a0', '#ffffff', '#f0a0b8'] : ['#c83a2a', '#e05a3a'], 7, 1);
@@ -2174,14 +2350,11 @@ function* buildLandSteps(snow, season = 'summer') {
   prop(sx - 13, sy - 24, 56, 36, STUMP.y - 0.1, (pg) => drawWoodpile(pg, snow));
   for (const [bx, by, bw] of [[FX - 18, FPY - 20, 36], [FX - 70, FPY + 21, 20], [FX + 50, FPY + 23, 20]]) prop(bx - 2, by - 12, bw + 4, 14, by / S, (pg) => drawBench(pg, bx, by, bw, snow));
   for (const [lx, ly] of LAMPS) prop(lx - 6, ly - 46, 12, 48, ly / S, (pg) => drawLamp(pg, lx, ly));
-  for (const [kind, bx, by, br] of [
-    ['gambel', 156, 334, 6], ['rabbit', 376, 340, 6], ['juniper', 424, 376, 7], ['rose', 508, 376, 6], ['sage', 250, 288, 5],
-    ['gambel', 470, 250, 6], ['juniper', 660, 300, 6], ['rabbit', 92, 248, 5], ['gambel', 4, 374, 6], ['sage', 128, 322, 4],
-    ['juniper', 12, 362, 8], ['gambel', -3, 349, 6],
-  ]) {
-    const w = br * 5 + 6, h = br * 3 + 6;
-    prop(bx - (w >> 1) - 2, by - h - 1, w + 4, h + 4, by / S - 0.2, (pg) => drawShrub(pg, kind, bx, by, br, snow, season));
-  }
+  SHRUBS.forEach((sh, i) => {
+    const pr = shrubProp(sh, snow, season, false);
+    pr.shrub = i; // landscapers swap in a trimmed copy per card (see _staticItems)
+    props.push(pr);
+  });
   const hx = FARM.x0 - 9, hy = FARM.y0 + 13;
   prop(hx - 11, hy - 13, 22, 15, hy / S, (pg) => drawHaystack(pg, hx, hy, snow));
   prop(CART.x - 30, CART.by - 60, 60, 63, CART.by / S, (pg) => drawCoffeeCart(pg, snow));
@@ -2512,6 +2685,211 @@ function makePot() {
   return { cv: c, ax, by };
 }
 
+/* ---------- event props ---------- */
+// All drawn facing the viewer, anchored at (ax, by) = centre of the ground line, then outlined.
+
+// The travelling merchant's hand cart. stage 0: packed under a tarp (as it's pulled), 1: canopy up, 2: goods out.
+function makeMerchantCart(stage) {
+  const c = mk(78, 66), g = c.getContext('2d'), ax = 44, by = 63;
+  const wd = ramp('#9a6a3a'), dk = ramp('#6a4426'), cv = ramp('#e8dcb8'), st = ramp('#3a8a5a');
+  // handles reach out to the left, toward whoever pulls it
+  line(g, ax - 22, by - 13, ax - 40, by - 9, dk.m, 2); line(g, ax - 22, by - 16, ax - 40, by - 12, dk.l, 1);
+  if (stage > 0) {
+    P(g, ax - 23, by - 54, 2, 32, '#6a5a4a'); P(g, ax + 21, by - 54, 2, 32, '#6a5a4a');
+    for (let r = 0; r < 7; r++) {
+      for (let i = ax - 27; i < ax + 27; i++) {
+        const stripe = Math.floor((i - ax + 27) / 6) % 2;
+        P(g, i, by - 60 + r, 1, 1, stripe ? (r < 2 ? '#f6eed8' : cv.m) : (r < 2 ? st.l : st.m));
+      }
+    }
+    for (let i = 0; i < 9; i++) { const sx = ax - 27 + i * 6 + 3, col = i % 2 ? cv.m : st.m; P(g, sx - 3, by - 53, 6, 1, col); P(g, sx - 2, by - 52, 4, 1, col); }
+    P(g, ax - 28, by - 61, 56, 1, dk.d);
+    // hanging shop sign
+    P(g, ax - 6, by - 50, 1, 3, '#4a4a56'); P(g, ax + 5, by - 50, 1, 3, '#4a4a56');
+    P(g, ax - 8, by - 47, 17, 7, wd.l); P(g, ax - 8, by - 47, 17, 1, wd.h); P(g, ax - 8, by - 41, 17, 1, wd.d);
+    P(g, ax - 5, by - 45, 3, 3, '#d84a3a'); P(g, ax - 1, by - 45, 3, 3, '#f0b030'); P(g, ax + 3, by - 45, 3, 3, '#5aa84a');
+  }
+  // cart box with planks
+  P(g, ax - 24, by - 26, 48, 3, wd.l); P(g, ax - 24, by - 24, 48, 1, wd.d);
+  P(g, ax - 22, by - 23, 44, 13, wd.m); P(g, ax - 22, by - 23, 44, 1, wd.h); P(g, ax + 19, by - 23, 3, 13, wd.d);
+  for (const y of [by - 19, by - 15]) P(g, ax - 22, y, 44, 1, wd.d);
+  for (const x of [ax - 12, ax + 2]) P(g, x, by - 23, 1, 13, wd.d);
+  if (stage === 0) {
+    // goods under a tied-down tarp, the canopy rolled up on top
+    ellipse(g, ax, by - 30, 21, 6, cv.d); ellipse(g, ax - 2, by - 31, 18, 5, cv.m); P(g, ax - 14, by - 34, 9, 2, cv.l);
+    for (const x of [ax - 10, ax + 8]) P(g, x, by - 35, 1, 10, dk.m);
+    P(g, ax - 18, by - 38, 36, 3, st.m); P(g, ax - 18, by - 38, 36, 1, st.l);
+  } else if (stage > 1) {
+    // fruit baskets, jars and bolts of cloth on the counter
+    for (const [bx, cols] of [[ax - 18, ['#d84a3a', '#e86a4a', '#c83a2a']], [ax - 8, ['#f0a030', '#e88a20', '#f8c050']], [ax + 12, ['#6ab84a', '#5aa83a', '#8ad060']]]) {
+      P(g, bx - 4, by - 30, 9, 4, dk.m); P(g, bx - 4, by - 30, 9, 1, dk.l);
+      for (let k = 0; k < 5; k++) P(g, bx - 3 + (k % 3) * 3, by - 33 + Math.floor(k / 3) * 2, 2, 2, cols[k % 3]);
+    }
+    for (const [jx, jc] of [[ax + 1, '#5a8ad0'], [ax + 4, '#d8a040'], [ax + 7, '#a85ac0']]) { P(g, jx, by - 32, 2, 6, jc); P(g, jx, by - 33, 2, 1, '#e8e0d0'); P(g, jx, by - 31, 1, 2, '#ffffff'); }
+    for (const [fx, fc] of [[ax - 16, '#c83a6a'], [ax - 9, '#3a7ac8'], [ax - 2, '#e8c040'], [ax + 5, '#5aa87a']]) {
+      const f = ramp(fc); P(g, fx, by - 22, 6, 9, f.m); P(g, fx, by - 22, 6, 1, f.l); P(g, fx + 5, by - 22, 1, 9, f.d);
+    }
+  }
+  for (const wx of [ax - 14, ax + 14]) {
+    disc(g, wx, by - 7, 7, dk.o); disc(g, wx, by - 7, 6, dk.m); disc(g, wx, by - 7, 2, dk.d);
+    P(g, wx - 6, by - 7, 13, 1, wd.l); P(g, wx, by - 13, 1, 13, wd.l); P(g, wx, by - 7, 1, 1, '#3a3a46');
+  }
+  outline(c);
+  return { cv: c, ax, by };
+}
+
+// The artists' sculpture: 0 crates, 1 block in scaffolding, 2 roughed out, 3 under a sheet, 4 unveiled.
+function makeSculpture(variant, stage) {
+  const c = mk(52, 70), g = c.getContext('2d'), ax = 26, by = 67;
+  const stn = ramp('#a8a49a'), wd = ramp('#b8905a'), cu = ramp('#c8783a'), vg = ramp('#5aa890');
+  const crate = (x, y) => { P(g, x, y, 11, 8, wd.m); P(g, x, y, 11, 1, wd.l); P(g, x, y + 4, 11, 1, wd.d); P(g, x + 10, y, 1, 8, wd.d); line(g, x + 1, y + 1, x + 9, y + 7, wd.d, 1); };
+  if (stage === 0) {
+    crate(ax - 14, by - 8); crate(ax - 2, by - 8); crate(ax - 8, by - 16);
+    ellipse(g, ax + 10, by - 3, 6, 2, '#d8d4c8');
+    outline(c);
+    return { cv: c, ax, by };
+  }
+  // plinth
+  P(g, ax - 11, by - 8, 22, 8, stn.d); P(g, ax - 11, by - 8, 22, 2, stn.l); P(g, ax - 12, by - 2, 24, 2, stn.o);
+  if (stage === 4) { P(g, ax - 4, by - 5, 8, 2, '#d8b060'); P(g, ax - 3, by - 5, 6, 1, '#f0d890'); }
+  const top = by - 8;
+  if (stage <= 2) {
+    // stone block, then the rough shape coming out of it
+    if (stage === 1) { P(g, ax - 9, top - 34, 18, 34, stn.m); P(g, ax - 9, top - 34, 18, 2, stn.l); P(g, ax + 6, top - 34, 3, 34, stn.d); for (let k = 0; k < 6; k++) P(g, ax - 8 + (k * 5) % 15, top - 30 + k * 5, 2, 1, stn.d); }
+    else drawSculptureForm(g, variant, ax, top, true);
+    // scaffolding
+    const sw = ramp('#8a6a40');
+    for (const x of [ax - 14, ax + 13]) P(g, x, top - 40, 2, 40, sw.m);
+    for (const y of [top - 38, top - 22, top - 8]) { P(g, ax - 14, y, 29, 2, sw.l); P(g, ax - 14, y + 1, 29, 1, sw.d); }
+    line(g, ax - 13, top - 22, ax + 13, top - 8, sw.d, 1);
+  } else if (stage === 3) {
+    // draped sheet with folds and a ribbon
+    const sh = ramp('#ece8e0');
+    ellipse(g, ax, top - 20, 12, 20, sh.m); P(g, ax - 12, top - 14, 25, 14, sh.m);
+    P(g, ax - 6, top - 30, 2, 30, sh.d); P(g, ax + 4, top - 26, 2, 26, sh.d); P(g, ax - 10, top - 36, 5, 3, sh.h);
+    P(g, ax - 12, top - 10, 25, 2, '#d83a4a'); P(g, ax + 6, top - 12, 3, 6, '#d83a4a');
+  } else drawSculptureForm(g, variant, ax, top, false);
+  outline(c);
+  return { cv: c, ax, by };
+}
+
+function drawSculptureForm(g, variant, ax, top, rough) {
+  const stn = ramp('#b0aca0'), cu = ramp('#c8783a'), vg = ramp('#5aa890');
+  if (variant === 'leaf') {
+    // a big copper aspen leaf on a stem, green patina in the veins
+    P(g, ax - 1, top - 14, 3, 14, cu.d);
+    ellipse(g, ax, top - 30, 13, 15, rough ? stn.m : cu.m);
+    if (!rough) {
+      ellipse(g, ax - 3, top - 34, 7, 8, cu.l); P(g, ax - 6, top - 40, 4, 3, cu.h);
+      line(g, ax, top - 16, ax, top - 43, vg.m, 1);
+      for (let k = 0; k < 4; k++) { line(g, ax, top - 20 - k * 6, ax - 9 + k, top - 26 - k * 6, vg.m, 1); line(g, ax, top - 20 - k * 6, ax + 9 - k, top - 26 - k * 6, vg.d, 1); }
+      P(g, ax - 1, top - 46, 3, 3, cu.m);
+    } else for (let k = 0; k < 7; k++) P(g, ax - 10 + (k * 7) % 20, top - 40 + k * 4, 2, 1, stn.d);
+    return;
+  }
+  // stacked-stone elk: body, neck and head of rounded stones, copper antlers
+  const rock = (x, y, rx, ry, k) => { ellipse(g, x, y, rx, ry, rough ? stn.d : [stn.m, ramp('#a89878').m, ramp('#9aa0a8').m][k % 3]); if (!rough) P(g, x - rx + 1, y - ry + 1, Math.max(2, rx), 1, stn.h); };
+  for (const [x, y] of [[ax - 7, top - 1], [ax + 7, top - 1]]) { P(g, x - 1, y - 12, 3, 12, rough ? stn.d : stn.m); }
+  rock(ax, top - 16, 12, 5, 0); rock(ax - 4, top - 22, 8, 4, 1); rock(ax + 6, top - 21, 6, 4, 2);
+  rock(ax + 9, top - 28, 4, 4, 0); rock(ax + 11, top - 34, 5, 3, 1);
+  if (!rough) {
+    const an = cu;
+    line(g, ax + 10, top - 37, ax + 6, top - 50, an.m, 2); line(g, ax + 13, top - 37, ax + 18, top - 49, an.m, 2);
+    for (const [x0, y0, x1, y1] of [[ax + 7, top - 45, ax + 2, top - 48], [ax + 8, top - 41, ax + 3, top - 42], [ax + 16, top - 45, ax + 21, top - 47], [ax + 15, top - 41, ax + 20, top - 41]]) line(g, x0, y0, x1, y1, an.l, 1);
+    P(g, ax + 13, top - 35, 1, 1, '#2a2a30');
+  }
+}
+
+// A wooden ladder leaning on a tree, and the landscapers' wheelbarrow (fill 0 empty – 2 heaped with clippings).
+function makeLadder() {
+  const c = mk(16, 34), g = c.getContext('2d'), ax = 8, by = 33, wd = ramp('#b8905a');
+  line(g, ax - 5, by, ax - 1, by - 31, wd.m, 1); line(g, ax + 2, by, ax + 5, by - 31, wd.d, 1);
+  for (let k = 1; k < 8; k++) { const y = by - k * 4, t = k / 8; line(g, Math.round(ax - 5 + 4 * t), y, Math.round(ax + 2 + 3 * t), y, wd.l, 1); }
+  outline(c);
+  return { cv: c, ax, by };
+}
+
+function makeBarrow(fill) {
+  const c = mk(30, 18), g = c.getContext('2d'), ax = 15, by = 16, tr = ramp('#3a7a5a'), wd = ramp('#8a5a30');
+  line(g, ax - 13, by - 8, ax - 4, by - 6, wd.m, 1); line(g, ax - 12, by - 6, ax - 4, by - 4, wd.d, 1);
+  line(g, ax - 6, by - 4, ax - 7, by, wd.d, 1);
+  P(g, ax - 5, by - 9, 15, 5, tr.m); P(g, ax - 5, by - 9, 15, 1, tr.l); P(g, ax - 3, by - 4, 11, 1, tr.d);
+  disc(g, ax + 8, by - 3, 3, '#3a3a46'); P(g, ax + 8, by - 3, 1, 1, '#9aa0aa');
+  if (fill) {
+    const lf = ['#3a7a2a', '#5a9a3a', '#7ab84a'];
+    for (let k = 0; k < (fill > 1 ? 14 : 7); k++) P(g, ax - 4 + ((k * 5) % 13), by - 10 - (fill > 1 ? (k % 3) : 0) - (k % 2), 2, 2, lf[k % 3]);
+  }
+  outline(c);
+  return { cv: c, ax, by };
+}
+
+// The travelling fair: a striped tent, a hand-cranked carousel (8 frames) and a ring-toss stall.
+function makeFairTent() {
+  const c = mk(40, 46), g = c.getContext('2d'), ax = 20, by = 44;
+  const rd = ramp('#d03a3a'), wh = ramp('#f4ece0');
+  P(g, ax - 1, by - 44, 1, 8, '#4a4a56'); P(g, ax, by - 44, 6, 4, '#f0c030'); P(g, ax, by - 42, 6, 1, '#d89a20');
+  for (let y = by - 36; y < by; y++) {
+    const t = (y - (by - 36)) / 36, half = Math.round(3 + t * 15);
+    for (let x = -half; x <= half; x++) {
+      const band = Math.floor(((x + half) / (2 * half + 1)) * 6) % 2;
+      const shade = x > half * 0.5 ? 'd' : x < -half * 0.5 ? 'l' : 'm';
+      P(g, ax + x, y, 1, 1, band ? wh[shade] : rd[shade]);
+    }
+  }
+  for (let i = 0; i < 7; i++) { const sx = ax - 18 + i * 6, col = i % 2 ? wh.m : rd.m; P(g, sx, by - 14, 5, 1, col); P(g, sx + 1, by - 13, 3, 1, col); }
+  P(g, ax - 4, by - 11, 9, 11, '#2a1a20'); P(g, ax - 4, by - 11, 2, 11, rd.d); P(g, ax + 3, by - 11, 2, 11, rd.d);
+  outline(c);
+  return { cv: c, ax, by };
+}
+
+function makeCarousel(frame) {
+  const c = mk(52, 54), g = c.getContext('2d'), ax = 26, by = 51;
+  const gold = ramp('#e8b840'), rd = ramp('#d03a3a'), wh = ramp('#f4ece0'), wd = ramp('#9a6a3a');
+  const horses = [];
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2 + (frame / 8) * (Math.PI / 3);
+    horses.push({ x: Math.round(Math.cos(a) * 17), z: Math.sin(a), bob: Math.round(Math.sin(a * 2 + i) * 2), col: ['#f4ece0', '#e8b878', '#a8c8e8'][i % 3], kid: i % 3 === 1 ? ['#e86a3a', '#30a8a8', '#c85ac0'][i % 3] : null });
+  }
+  const drawHorse = (h) => {
+    const x = ax + h.x, y = by - 16 + h.bob, hc = ramp(h.col);
+    P(g, x, by - 40, 1, 30, gold.m);
+    P(g, x - 3, y - 2, 7, 3, hc.m); P(g, x - 3, y - 2, 7, 1, hc.l); P(g, x + 3, y - 5, 2, 4, hc.m); P(g, x + 4, y - 6, 2, 2, hc.l);
+    P(g, x - 3, y + 1, 1, 3, hc.d); P(g, x + 2, y + 1, 1, 3, hc.d); P(g, x - 4, y - 2, 1, 2, '#6a4a3a');
+    if (h.kid) { P(g, x - 1, y - 6, 3, 4, h.kid); P(g, x - 1, y - 9, 3, 3, '#e8b48a'); P(g, x - 1, y - 10, 3, 1, '#4a2a18'); }
+  };
+  // platform
+  ellipse(g, ax, by - 6, 23, 5, wd.d); ellipse(g, ax, by - 7, 23, 4, wd.m); ellipse(g, ax, by - 8, 21, 3, wd.l);
+  horses.filter((h) => h.z < 0).forEach(drawHorse);
+  P(g, ax - 2, by - 42, 4, 34, gold.d); P(g, ax - 1, by - 42, 1, 34, gold.h);
+  horses.filter((h) => h.z >= 0).forEach(drawHorse);
+  // striped cone roof with a scalloped rim and bulbs
+  for (let y = by - 50; y < by - 40; y++) {
+    const half = Math.round(2 + ((y - (by - 50)) / 10) * 22);
+    for (let x = -half; x <= half; x++) P(g, ax + x, y, 1, 1, (Math.floor((x + half + frame) / 4) % 2 ? wh : rd)[x > half * 0.5 ? 'd' : 'm']);
+  }
+  for (let i = 0; i < 9; i++) { const sx = ax - 24 + i * 6, col = i % 2 ? wh.m : rd.m; P(g, sx, by - 40, 6, 1, col); P(g, sx + 1, by - 39, 4, 1, col); P(g, sx + 2, by - 41, 2, 1, '#fff2a0'); }
+  P(g, ax - 1, by - 53, 3, 3, gold.l);
+  outline(c);
+  return { cv: c, ax, by };
+}
+
+function makeTossStall() {
+  const c = mk(34, 44), g = c.getContext('2d'), ax = 17, by = 42;
+  const bl = ramp('#3a6ad0'), wh = ramp('#f4ece0'), wd = ramp('#9a6a3a');
+  P(g, ax - 14, by - 36, 2, 36, wd.d); P(g, ax + 12, by - 36, 2, 36, wd.d);
+  for (let r = 0; r < 6; r++) for (let i = ax - 16; i < ax + 16; i++) P(g, i, by - 42 + r, 1, 1, Math.floor((i - ax + 16) / 4) % 2 ? wh[r < 2 ? 'h' : 'm'] : bl[r < 2 ? 'l' : 'm']);
+  for (let i = 0; i < 8; i++) { const sx = ax - 16 + i * 4, col = i % 2 ? wh.m : bl.m; P(g, sx, by - 36, 4, 1, col); P(g, sx + 1, by - 35, 2, 1, col); }
+  // bottles to ring and prizes on the back shelf
+  P(g, ax - 11, by - 22, 23, 1, wd.l);
+  for (let k = 0; k < 6; k++) { const bx = ax - 10 + k * 4; P(g, bx, by - 27, 2, 5, ['#4a9a5a', '#c84a3a', '#d8a030'][k % 3]); P(g, bx, by - 28, 2, 1, '#e8e0d0'); }
+  for (const [px, pc] of [[ax - 8, '#c88a5a'], [ax + 1, '#e8a0c0'], [ax + 8, '#8ac0e8']]) { disc(g, px, by - 31, 2, pc); P(g, px - 1, by - 34, 1, 1, pc); P(g, px + 1, by - 34, 1, 1, pc); }
+  P(g, ax - 13, by - 14, 27, 3, wd.l); P(g, ax - 13, by - 14, 27, 1, wd.h);
+  P(g, ax - 12, by - 11, 25, 11, bl.m); P(g, ax - 12, by - 11, 25, 1, bl.l);
+  for (let x = ax - 10; x < ax + 12; x += 4) P(g, x, by - 9, 2, 7, wh.m);
+  outline(c);
+  return { cv: c, ax, by };
+}
+
 function makePuff(r, light, mid, dark) {
   const c = mk(r * 2 + 3, r * 2 + 3), g = c.getContext('2d'), o = r + 1;
   disc(g, o, o, r, dark);
@@ -2553,6 +2931,313 @@ function makeFilmBg(sc) {
   return c;
 }
 
+/* ---------- random events ---------- */
+// Visiting crews with their own props. Each entry in EVENTS is self-contained; the card's event framework
+// (_spawnEvents and friends) schedules them, runs their stages and draws their props. To add an event:
+// add an entry here (crew roles from CREW_LOOKS, a spot on open ground, plan/visit/props hooks), any new
+// poses/tools/FX it needs, and a row in the README. See "Adding an event" in CLAUDE.md.
+//
+// Stages: arrive → setup (only with setupSecs) → open → packup (only with packSecs) → leave.
+// Hooks (all optional except crewPlan): start(c, ev), instant(c, ev) when the card loads mid-event,
+// crewPlan(c, v, ev, i) → a plan or null (null = leave), visit(c, v, ev) → an onlooker plan,
+// tick(c, ev) once a second, props(c, ev, add) to draw, blocks(c, ev) → footprints, lights(c, ctx, ev, dark),
+// keep(c, day, min) for anything that outlasts the event (a sculpture, trimmed shrubs).
+
+const DAY_MOODS = ['morning', 'work', 'meal'];
+// Where things happen (sim units). Open ground, off the paths, away from doors and benches.
+const CART_AT = { x: 154, y: 116.6 };
+const CART_PULL = 15; // the cart trails this far behind whoever pulls it
+const SCULPT_AT = { x: 70, y: 86.6 };
+const FAIR_AT = { tent: { x: 142.5, y: 114.8 }, carousel: { x: 155, y: 121.6 }, stall: { x: 167, y: 115.4 } };
+const PRUNE_TREES = [[160, 70], [197, 71]];
+
+const towardX = (x, cx) => (x < cx ? 1 : -1);
+const fairPiece = (ev, k) => ev.progress >= { tent: 0.15, stall: 0.45, carousel: 0.75, pennants: 0.95 }[k];
+
+const EVENTS = {
+  merchant: {
+    label: 'Travelling merchant', icon: '🛒', text: 'A travelling merchant has set up shop',
+    crew: ['merchant'], weight: 3, hours: [9, 15], minutes: [30, 50], moods: DAY_MOODS, setupSecs: 14, packSecs: 10,
+    suggest: ['market', 'merchant', 'delivery', 'deliveries', 'packages?', 'parcels?', 'shopping', 'groceries'],
+    start(c, ev) { ev.data.parked = false; },
+    instant(c, ev) { ev.data.parked = true; },
+    crewPlan(c, v, ev) {
+      const { x, y } = CART_AT, behind = { x: x + 9.4, y: y + 0.3 }; // beside the cart, minding the counter
+      if (ev.stage === 'arrive') {
+        v.pulling = true;
+        return { x: x - CART_PULL, y: y + 0.4, face: -1, action: 'idle', dur: 0.6, done: () => { v.pulling = false; ev.data.parked = true; v.ready = true; } };
+      }
+      if (ev.stage === 'setup' || ev.stage === 'packup') return { ...behind, face: pick([-1, 1]), action: 'build', dur: 2 };
+      if (ev.stage === 'open') {
+        return { ...behind, face: Math.random() < 0.75 ? -1 : 1, action: 'sell', dur: rand(4, 9), onArrive: () => { if (Math.random() < 0.3) v.bubble = { g: 'coin', c: '#c89a20', t: 1.4 }; } };
+      }
+      if (ev.data.parked) return { x: x - CART_PULL, y: y + 0.4, face: -1, action: 'hitch', dur: 1.2, done: () => { ev.data.parked = false; v.pulling = true; } };
+      return null;
+    },
+    visit(c, v) {
+      const x = CART_AT.x + rand(-6, 6);
+      return { x, y: CART_AT.y + rand(2.2, 3.4), face: towardX(x, CART_AT.x), action: 'browse', dur: rand(4, 8), onArrive: () => { if (Math.random() < 0.5) v.bubble = { g: Math.random() < 0.6 ? 'coin' : 'heart', c: '#c89a20', t: 1.4 }; } };
+    },
+    blocks: (c, ev) => (ev.data.parked ? [[146.5, 114.6, 161.5, 116.9]] : []),
+    props(c, ev, add) {
+      const st = ev.progress < 0.4 ? 0 : ev.progress < 0.85 ? 1 : 2;
+      if (ev.data.parked) { add(CART_AT.x, CART_AT.y, CART_AT.y, c._eventArt(`cart${st}`, () => makeMerchantCart(st))); return; }
+      const m = ev.crew[0];
+      if (m.pulling && !m.gone) add(m.x - m.face * CART_PULL, m.y, m.y - 0.02, c._eventArt('cart0', () => makeMerchantCart(0)), m.face > 0);
+    },
+  },
+
+  salesman: {
+    label: 'Door-to-door salesman', icon: '💼', text: 'A salesman is knocking on doors',
+    crew: ['salesman'], weight: 2, hours: [10, 16], minutes: [20, 35], moods: DAY_MOODS,
+    suggest: ['door ?bell', 'knock(ing)?', 'front door', 'salesman', 'visitor at the door'],
+    start(c, ev) { ev.data.route = HOUSES.map((_, i) => i).sort(() => Math.random() - 0.5).slice(0, 4); },
+    crewPlan(c, v, ev) {
+      const route = ev.data.route;
+      v.ready = true;
+      if (ev.stage === 'leave' || Date.now() > ev.endAt - 45000) { if (ev.stage !== 'leave') c._eventStage('leave'); return null; }
+      if (!route.length) {
+        // between rounds of doors he works the street, or takes a breather by the fire
+        const r = Math.random();
+        const marks = c._villagers.filter((o) => o !== v && !o.eventKind && !o.inside && !o.gone && !o.walking && o.y > HORIZON + 10);
+        if (r < 0.5 && marks.length) {
+          const o = pick(marks), side = o.x > W - 12 ? -1 : o.x < 12 ? 1 : pick([-1, 1]);
+          return {
+            x: o.x + side * 5, y: o.y, face: -side, carry: 'case', action: 'pitch', dur: rand(4, 7),
+            onArrive: () => { v.bubble = { g: 'coin', c: '#c89a20', t: 1.6 }; o.bubble = { g: 'dots', c: '#333', t: 1.6 }; },
+            done: () => { if (Math.random() < 0.3) c._spawn({ x: o.x, y: o.y - 11, vx: 0, vy: -4, life: 1.4, g: 'star', c: '#f0c030', layer: 1 }); },
+          };
+        }
+        if (r < 0.8) { const a = rand(0, Math.PI * 2), x = FIRE.x + Math.cos(a) * 21; return { x, y: FIRE.y + 1 + Math.sin(a) * 9, face: towardX(x, FIRE.x), carry: 'case', action: 'idle', dur: rand(8, 20) }; }
+        route.push(...HOUSES.map((_, i) => i).sort(() => Math.random() - 0.5).slice(0, 3));
+      }
+      const hi = route[0], d = HOUSES[hi].door, at = { x: d.x + 2, y: d.y + 0.3, carry: 'case' };
+      const next = () => { route.shift(); v.knocked = false; };
+      if (!v.knocked) return { ...at, face: -1, action: 'knock', dur: 2, done: () => { v.knocked = true; } };
+      if ((c._occ?.[hi]?.inside || 0) > 0) {
+        return {
+          ...at, face: -1, action: 'pitch', dur: rand(4, 6), onArrive: () => { v.bubble = { g: 'dots', c: '#333', t: 2 }; },
+          done: () => { const sale = Math.random() < 0.35; c._spawn({ x: d.x, y: d.y - 10, vx: 0, vy: -4, life: 1.6, g: sale ? 'star' : 'cross', c: sale ? '#f0c030' : '#d84040', layer: 1 }); next(); },
+        };
+      }
+      return { ...at, face: 1, action: 'shrug', dur: 1.6, onArrive: () => { v.bubble = { g: 'q', c: '#333', t: 1.4 }; }, done: next };
+    },
+  },
+
+  artists: {
+    label: 'Visiting artists', icon: '🎨', text: 'Artists are making a sculpture',
+    crew: ['artist', 'artist', 'artist'], weight: 2, hours: [9, 13], minutes: [40, 60], moods: DAY_MOODS, previewMins: 4,
+    suggest: ['art', 'artists?', 'gallery', 'museum', 'sculpt\\w*', 'painting'],
+    start(c, ev) { ev.data.variant = ['elk', 'leaf'][c._dayInfo().day % 2]; },
+    tick(c, ev) {
+      if (ev.stage !== 'open') return;
+      ev.progress = Math.min(1, (Date.now() - ev.startAt) / ev.dur * 1.08);
+      if (ev.progress >= 1 && !ev.data.unveiled) {
+        ev.data.unveiled = true;
+        for (let k = 0; k < 10; k++) c._spawn({ x: SCULPT_AT.x + rand(-5, 5), y: SCULPT_AT.y - 14, vx: rand(-8, 8), vy: rand(-14, -6), life: 1.4, g: k % 2 ? 'spark' : 'heart', c: k % 2 ? '#f0d040' : '#ff6080', layer: 1 });
+        c._display = { variant: ev.data.variant, day: c._dayInfo().day };
+        c._eventStage('leave');
+      }
+    },
+    crewPlan(c, v, ev, i) {
+      const { x, y } = SCULPT_AT, side = [[-5.6, 1], [5.8, -1], [0, 1]][i];
+      if (ev.stage === 'arrive') return { x: x + side[0], y: y + 0.4, face: side[1], carry: 'crate', drop: true, action: 'build', dur: 1.5, done: () => { v.ready = true; } };
+      if (ev.stage !== 'open') return null;
+      if (ev.progress >= 0.9 || i === 2) {
+        const ax = x + (i === 0 ? -8 : i === 1 ? 8 : pick([-9, 9]));
+        return { x: Math.max(60, ax), y: y + rand(2.6, 3.6), face: towardX(ax, x), action: 'admire', dur: rand(4, 7), onArrive: () => { if (Math.random() < 0.3) v.bubble = { g: 'heart', c: '#e04060', t: 1.2 }; } };
+      }
+      return { x: x + side[0], y: y + 0.4, face: side[1], action: i === 1 && ev.progress > 0.45 ? 'paint' : 'chisel', dur: rand(6, 12) };
+    },
+    visit(c, v, ev) {
+      if (ev && ev.progress < 0.3) return null;
+      const ax = SCULPT_AT.x + (Math.random() < 0.5 ? rand(-10, -5) : rand(5, 10));
+      return { x: Math.max(60, ax), y: SCULPT_AT.y + rand(4.2, 6.4), face: towardX(ax, SCULPT_AT.x), action: 'admire', dur: rand(4, 8), onArrive: () => { if (Math.random() < 0.4) v.bubble = { g: 'heart', c: '#e04060', t: 1.2 }; } };
+    },
+    blocks: (c, ev) => (!ev || ev.stage !== 'arrive' || ev.crew.some((v) => v.ready) ? [[SCULPT_AT.x - 4.2, 84.2, SCULPT_AT.x + 4.2, 86.9]] : []),
+    props(c, ev, add) {
+      const st = !ev ? 4 : ev.stage === 'arrive' ? 0 : ev.progress < 0.12 ? 0 : ev.progress < 0.4 ? 1 : ev.progress < 0.9 ? 2 : 3;
+      if (ev && ev.stage === 'arrive' && !ev.crew.some((v) => v.ready)) return;
+      const variant = ev ? ev.data.variant : c._display.variant;
+      add(SCULPT_AT.x, SCULPT_AT.y, SCULPT_AT.y + 0.2, c._eventArt(`sculpt${variant}${st}`, () => makeSculpture(variant, st)));
+    },
+    // the finished piece stays on show for the rest of the day
+    keep(c, day, min) {
+      if (c._display && (c._display.day !== day || c._mode === 'sleep')) c._display = null;
+      if (!c._display && c._mode !== 'sleep' && !(c._event?.kind === 'artists') && c._config.events !== false) {
+        const done = c._daySchedule(day).find((e) => e.kind === 'artists' && e.end <= min);
+        if (done) c._display = { variant: ['elk', 'leaf'][day % 2], day };
+      }
+    },
+  },
+
+  landscapers: {
+    label: 'Landscapers', icon: '✂️', text: 'The landscapers are trimming the greenery',
+    crew: ['landscaper', 'landscaper', 'landscaper'], weight: 2, hours: [8, 14], minutes: [40, 60], moods: DAY_MOODS, previewMins: 4,
+    suggest: ['garden(er|ers|ing)?', 'lawn', 'landscap\\w*', 'mow(er|ing)?', 'yard ?work', 'hedges?'],
+    start(c, ev) {
+      c._trimToday();
+      ev.data.todo = SHRUBS.map((sh, i) => i).filter((i) => SHRUBS[i][1] / S > 6 && SHRUBS[i][1] / S < W - 6).sort((a, b) => SHRUBS[a][1] - SHRUBS[b][1]);
+      ev.data.trees = PRUNE_TREES.slice();
+      ev.data.claim = new Map(); // worker → the shrub they're on
+      ev.crew[1].pushing = true;
+    },
+    instant(c, ev) {
+      const f = Math.min(1, (Date.now() - ev.startAt) / ev.dur);
+      ev.data.todo.slice(0, Math.floor(f * ev.data.todo.length)).forEach((i) => c._trimmed.set.add(i));
+      if (f > 0.5) ev.data.trees.shift();
+    },
+    crewPlan(c, v, ev, i) {
+      if (ev.stage === 'arrive') v.ready = true;
+      if (ev.stage === 'leave') return null;
+      const d = ev.data, trimmed = c._trimmed.set, left = d.todo.filter((k) => !trimmed.has(k)).length + d.trees.length;
+      d.claim.delete(v); // a new plan replaces whatever this worker was on
+      if (!left) { c._eventStage('leave'); return null; }
+      // spread the work over the time the event has left
+      const per = Math.max(12, Math.min(240, (ev.endAt - Date.now()) / 1000 / Math.max(1, left / 3)));
+      if (i === 2 && d.trees.length) {
+        const [tx, ty] = d.trees[0];
+        return { x: tx - 3.5, y: ty + 0.8, face: 1, carry: 'ladder', drop: true, action: 'prune', dur: per, done: () => { d.trees.shift(); } };
+      }
+      const taken = new Set(d.claim.values());
+      const k = d.todo.find((j) => !trimmed.has(j) && !taken.has(j));
+      if (k === undefined) return { ...c._wanderNear(v), action: 'idle', dur: rand(4, 8) };
+      d.claim.set(v, k);
+      const [, bx, by, br] = SHRUBS[k], cx = bx / S, off = (br * 5) / 2 / S + 1.6, side = cx + off < W - 3 ? 1 : -1;
+      return { x: cx + side * off, y: by / S + 0.5, face: -side, action: 'trim', dur: per, done: () => { trimmed.add(k); d.claim.delete(v); } };
+    },
+    props(c, ev, add) {
+      for (const v of ev.crew) {
+        if (v.gone) continue;
+        if (v.action === 'prune' && !v.walking) add(v.x + v.face * 2, v.y, v.y - 0.05, c._eventArt('ladder', makeLadder));
+        if (v.pushing) {
+          const fill = Math.min(2, Math.floor((c._trimmed.set.size / Math.max(1, ev.data.todo.length)) * 3));
+          const bx = v.walking ? v.x + v.face * 8 : v.x - v.face * 7;
+          add(bx, v.y, v.y - 0.03, c._eventArt(`barrow${fill}`, () => makeBarrow(fill)), v.walking ? v.face < 0 : v.face > 0);
+        }
+      }
+    },
+    // shrubs stay trimmed for the rest of the day
+    keep(c, day, min) {
+      c._trimToday();
+      if (c._config.events !== false && !(c._event?.kind === 'landscapers') && c._daySchedule(day).some((e) => e.kind === 'landscapers' && e.end <= min)) {
+        SHRUBS.forEach((sh, i) => c._trimmed.set.add(i));
+      }
+    },
+  },
+
+  fair: {
+    label: 'Travelling fair', icon: '🎠', text: 'A travelling fair has come to town',
+    crew: ['ringmaster', 'fairfolk', 'fairfolk', 'fairfolk'], weight: 1, hours: [13, 16.5], minutes: [90, 150],
+    moods: ['work', 'meal', 'evening'], setupSecs: 40, packSecs: 25, extraVisitors: 3, draw: 0.6, maxVisitors: 6,
+    suggest: ['fair', 'funfair', 'carnival', 'circus', 'carousel'],
+    crewPlan(c, v, ev, i) {
+      const { tent, carousel, stall } = FAIR_AT;
+      const spots = [
+        { x: tent.x + 1, y: tent.y + 1.6, face: 1 }, { x: carousel.x + 7.4, y: carousel.y - 0.4, face: -1 },
+        { x: stall.x, y: stall.y - 3.6, face: -1 }, { x: carousel.x + rand(-4, 4), y: carousel.y + 2.6, face: pick([-1, 1]) },
+      ];
+      if (ev.stage === 'arrive') return { ...spots[i], carry: 'crate', drop: true, action: 'build', dur: 1.2, done: () => { v.ready = true; } };
+      if (ev.stage === 'setup' || ev.stage === 'packup') return { ...spots[i], action: 'build', dur: 2 };
+      if (ev.stage !== 'open') return null;
+      const act = ['announce', 'crank', 'sell', 'juggle'][i];
+      return {
+        ...spots[i], action: act, dur: rand(6, 12),
+        onArrive: () => { if (i === 0) c._spawn({ x: v.x + v.face * 3, y: v.y - 11, vx: 0, vy: -5, life: 1.6, g: 'bang', c: '#d03030', layer: 1 }); },
+      };
+    },
+    visit(c, v) {
+      const { carousel, stall } = FAIR_AT;
+      if (!v.small && Math.random() < 0.45) {
+        const x = stall.x + rand(-3, 3);
+        return { x, y: stall.y + 2.4, face: towardX(x, stall.x), action: 'toss', dur: rand(4, 8), done: () => { if (Math.random() < 0.3) c._spawn({ x: v.x, y: v.y - 11, vx: 0, vy: -4, life: 1.4, g: 'star', c: '#f0c030', layer: 1 }); } };
+      }
+      const x = carousel.x + rand(-10, 10);
+      return { x, y: Math.min(H - 1.5, carousel.y + rand(1.8, 3.4)), face: towardX(x, carousel.x), action: v.small ? 'cheer' : 'admire', dur: rand(5, 10) };
+    },
+    blocks(c, ev) {
+      const out = [];
+      if (ev.stage === 'arrive') return out;
+      const { tent, carousel, stall } = FAIR_AT;
+      if (fairPiece(ev, 'tent')) out.push([tent.x - 4.4, tent.y - 3, tent.x + 4.4, tent.y + 0.3]);
+      if (fairPiece(ev, 'carousel')) out.push([carousel.x - 6.6, carousel.y - 4.6, carousel.x + 6.6, carousel.y + 0.3]);
+      if (fairPiece(ev, 'stall')) out.push([stall.x - 4, stall.y - 3, stall.x + 4, stall.y + 0.3]);
+      return out;
+    },
+    props(c, ev, add) {
+      if (ev.stage === 'arrive') return;
+      const { tent, carousel, stall } = FAIR_AT;
+      if (fairPiece(ev, 'tent')) add(tent.x, tent.y, tent.y, c._eventArt('tent', makeFairTent));
+      if (fairPiece(ev, 'stall')) add(stall.x, stall.y, stall.y, c._eventArt('stall', makeTossStall));
+      if (fairPiece(ev, 'carousel')) {
+        const spin = ev.stage === 'open' && ev.crew[1].action === 'crank' && !ev.crew[1].walking;
+        const f = spin ? Math.floor(c._t * 5) % 8 : 0;
+        add(carousel.x, carousel.y, carousel.y, c._eventArt(`carousel${f}`, () => makeCarousel(f)));
+      }
+      if (fairPiece(ev, 'pennants')) add(0, 0, tent.y + 0.1, c._eventArt('pennants', makeFairPennants), false, true);
+    },
+    lights(c, ctx, ev, dark) {
+      if (!dark || ev.stage === 'arrive') return;
+      const { carousel, stall } = FAIR_AT;
+      if (fairPiece(ev, 'carousel')) for (let k = 0; k < 9; k++) c._glow(ctx, carousel.x * S - 22 + k * 6, carousel.y * S - 41, 7, '255,220,120', 0.5);
+      if (fairPiece(ev, 'stall')) c._glow(ctx, stall.x * S, stall.y * S - 32, 16, '255,200,120', 0.45);
+    },
+  },
+};
+const EVENT_MODES = Object.keys(EVENTS).map((k) => `event:${k}`);
+const eventOfMode = (m) => (typeof m === 'string' && m.startsWith('event:') && EVENTS[m.slice(6)] ? m.slice(6) : null);
+
+// Pennant string from the tent's peak to the stall's awning (drawn in full-canvas coordinates).
+function makeFairPennants() {
+  const { tent, stall } = FAIR_AT;
+  const x0 = tent.x * S, y0 = tent.y * S - 38, x1 = stall.x * S - 14, y1 = stall.y * S - 40;
+  const c = mk(RW, RH), g = c.getContext('2d'), cols = ['#e04848', '#f0c040', '#40a0e0', '#50c060'];
+  const n = Math.round((x1 - x0) / 3);
+  for (let i = 0; i <= n; i++) {
+    const u = i / n, x = Math.round(x0 + (x1 - x0) * u), y = Math.round(y0 + (y1 - y0) * u + Math.sin(u * Math.PI) * 6);
+    P(g, x, y, 3, 1, '#3a3030');
+    if (i % 2 && i < n) { const cl = ramp(cols[(i >> 1) % cols.length]); P(g, x - 1, y + 1, 4, 2, cl.m); P(g, x, y + 3, 2, 1, cl.d); }
+  }
+  return { cv: c, ax: 0, by: 0 };
+}
+
+// Which events happen on a given day (wall-clock minutes from midnight), from the date and the card's seed.
+// Every dashboard shows the same events on the same day; the same kind never runs twice in a row.
+const dayKey = (d) => d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
+function eventsForDay(key, seed = 42, freq = 'daily') {
+  // walk forward from a week back so "not the same as yesterday" agrees with what yesterday really had
+  const y = Math.floor(key / 10000), m = Math.floor(key / 100) % 100 - 1, d = key % 100;
+  let last = null, out = [];
+  for (let k = 7; k >= 0; k--) {
+    out = eventsOnDay(dayKey(new Date(y, m, d - k)), seed, freq, last);
+    if (out.length) last = out[out.length - 1].kind;
+  }
+  return out;
+}
+function eventsOnDay(key, seed, freq, avoid) {
+  const kinds = Object.keys(EVENTS);
+  const r = mulberry32((Math.imul(key ^ 0x9e3779b9, 0x85ebca6b) ^ Math.imul(seed + 1, 0xc2b2ae35)) >>> 0);
+  r(); r();
+  const n = freq === 'often' ? 3 : r() < (freq === 'rare' ? 0.3 : 0.88) ? 1 : 0;
+  const out = [];
+  let last = avoid;
+  for (let i = 0; i < n; i++) {
+    const pool = kinds.filter((k) => k !== last);
+    let x = r() * pool.reduce((t, k) => t + EVENTS[k].weight, 0), kind = pool[pool.length - 1];
+    for (const k of pool) if ((x -= EVENTS[k].weight) <= 0) { kind = k; break; }
+    const E = EVENTS[kind];
+    let a = E.hours[0] * 60, b = E.hours[1] * 60;
+    if (n > 1) { // spread several events over the day
+      const s0 = 8 * 60 + i * (600 / n), s1 = s0 + 600 / n;
+      if (Math.min(b, s1) > Math.max(a, s0)) { a = Math.max(a, s0); b = Math.min(b, s1); } else { a = s0; b = s1; }
+    }
+    const start = Math.round(a + r() * (b - a)), dur = Math.round(E.minutes[0] + r() * (E.minutes[1] - E.minutes[0]));
+    out.push({ kind, start, end: start + dur });
+    last = kind;
+  }
+  return out;
+}
+
 /* ---------- reactions: map anything in Home Assistant to a village mood ---------- */
 
 // States that count as "on / active" across the common domains.
@@ -2564,8 +3249,12 @@ const ACTIVE_STATES = new Set([
 const EVENT_DOMAINS = ['scene', 'script', 'automation', 'button', 'input_button', 'event'];
 const REACTION_KINDS = ['activated', 'on', 'state', 'not_state', 'numeric'];
 // 'auto' sends the village back to its daily routine (e.g. a "Good morning" scene ending "Good night").
-const REACTION_MODES = new Set(['auto', ...Object.keys(MODES)]);
-const modeInfo = (m) => (m === 'auto' ? { icon: '🗓️', label: 'Daily routine', text: 'Follow the normal schedule' } : MODES[m]);
+const REACTION_MODES = new Set(['auto', ...Object.keys(MODES), ...EVENT_MODES]);
+const modeInfo = (m) => {
+  if (m === 'auto') return { icon: '🗓️', label: 'Daily routine', text: 'Follow the normal schedule' };
+  const ev = eventOfMode(m);
+  return ev ? { icon: EVENTS[ev].icon, label: `Event: ${EVENTS[ev].label}`, text: EVENTS[ev].text } : MODES[m];
+};
 
 const domainOf = (entity) => String(entity || '').split('.')[0];
 
@@ -2636,9 +3325,13 @@ const SUGGEST_WORDS = [
   ['gaming', ['gaming', 'games?', 'game ?night', 'xbox', 'playstation', 'ps[345]', 'nintendo', 'steam', 'console', 'retro']],
   ['meal', ['dinner', 'lunch', 'breakfast', 'meal', 'cooking', 'dining']],
   ['away', ['away', 'leave', 'leaving', 'vacation', 'holiday', 'good ?bye', 'not home', 'nobody home']],
+  ...Object.entries(EVENTS).map(([k, E]) => [`event:${k}`, E.suggest]), // before "work", so "Yard work" means landscapers
   ['work', ['work', 'working', 'focus', 'office', 'study']],
 ].map(([mode, words]) => [mode, new RegExp(`\\b(${words.join('|')})\\b`, 'i')]);
-const SUGGEST_DURATION = { auto: 900, gaming: 240, sleep: 480, away: 720, morning: 60, meal: 90, party: 180, movie: 150, cozy: 150, work: 240 };
+const SUGGEST_DURATION = {
+  auto: 900, gaming: 240, sleep: 480, away: 720, morning: 60, meal: 90, party: 180, movie: 150, cozy: 150, work: 240,
+  ...Object.fromEntries(Object.entries(EVENTS).map(([k, E]) => [`event:${k}`, E.minutes[1]])),
+};
 
 function suggestReactions(states, existing = []) {
   if (!states) return [];
@@ -2650,9 +3343,9 @@ function suggestReactions(states, existing = []) {
     const d = domainOf(id), name = nameOf(id, st);
     if (['scene', 'script', 'button', 'input_button'].includes(d)) {
       const hit = SUGGEST_WORDS.find(([, re]) => re.test(name));
-      if (hit) add({ entity: id, when: 'activated', mode: hit[0], duration: SUGGEST_DURATION[hit[0]], why: hit[0] === 'auto' ? `"${name}" sounds like the start of a normal day` : `"${name}" sounds like ${MODES[hit[0]].label.toLowerCase()}` });
+      if (hit) add({ entity: id, when: 'activated', mode: hit[0], duration: SUGGEST_DURATION[hit[0]], why: hit[0] === 'auto' ? `"${name}" sounds like the start of a normal day` : eventOfMode(hit[0]) ? `"${name}" could bring the ${EVENTS[eventOfMode(hit[0])].label.toLowerCase()}` : `"${name}" sounds like ${MODES[hit[0]].label.toLowerCase()}` });
     } else if (['input_boolean', 'switch'].includes(d)) {
-      const hit = SUGGEST_WORDS.find(([m, re]) => ['party', 'movie', 'gaming', 'sleep', 'away', 'cozy'].includes(m) && re.test(name));
+      const hit = SUGGEST_WORDS.find(([m, re]) => (['party', 'movie', 'gaming', 'sleep', 'away', 'cozy'].includes(m) || eventOfMode(m)) && re.test(name));
       if (hit) add({ entity: id, when: 'on', mode: hit[0], why: `while "${name}" is on` });
     } else if (d === 'alarm_control_panel') {
       add({ entity: id, when: 'state', state: ['armed_away', 'armed_vacation'], mode: 'away', why: `when "${name}" is armed away` });
@@ -2664,20 +3357,20 @@ function suggestReactions(states, existing = []) {
   const people = Object.keys(states).filter((k) => k.startsWith('person.'));
   if (states['zone.home'] && people.length) add({ entity: 'zone.home', when: 'numeric', below: 1, mode: 'away', why: 'when nobody is home' });
   else if (people.length === 1) add({ entity: people[0], when: 'not_state', state: ['home'], mode: 'away', why: 'when you leave home' });
-  const order = ['auto', ...Object.keys(MODES)];
+  const order = ['auto', ...Object.keys(MODES), ...EVENT_MODES];
   return out.sort((a, b) => order.indexOf(a.mode) - order.indexOf(b.mode)).slice(0, 16);
 }
 
 /* ---------- visual editor ---------- */
 
-const MODE_OPTIONS = ['auto', ...Object.keys(MODES)].map((value) => { const m = modeInfo(value); return { value, label: `${m.icon} ${m.label} — ${m.text}` }; });
+const MODE_OPTIONS = ['auto', ...Object.keys(MODES), ...EVENT_MODES].map((value) => { const m = modeInfo(value); return { value, label: `${m.icon} ${m.label} — ${m.text}` }; });
 const SCHEDULE_FIELDS = [
   ['wake', 'Wake up'], ['work', 'Start work'], ['lunch', 'Lunch'], ['work_after_lunch', 'Back to work'],
   ['dinner', 'Dinner'], ['evening', 'Evening by the fire'], ['sleep', 'Bedtime'],
 ];
 const EDITOR_LABELS = {
   title: 'Title', villagers: 'Residents', visitors: 'Visitors, mail carrier and party band', animals: 'Animals',
-  show_status: 'Show the status line', fps: 'Frames per second',
+  show_status: 'Show the status line', fps: 'Frames per second', events: 'Random events', event_frequency: 'How often',
   weather_entity: 'Weather', sun_entity: 'Sun', mode_entity: 'Mood helper (optional)',
   entity: 'When this', when: 'Condition', state: 'State', attribute: 'Attribute (optional)',
   above: 'Above', below: 'Below', duration: 'Stay in this mood for (minutes)', mode: 'The village goes into', label: 'Caption (optional)',
@@ -2686,6 +3379,7 @@ const EDITOR_LABELS = {
 const EDITOR_HELPERS = {
   villagers: 'People who live in the village (1–10).',
   fps: 'Lower saves a little power; 15 is smooth.',
+  events: `Now and then a crew drops by: ${Object.values(EVENTS).map((E) => E.label.toLowerCase()).join(', ')}. A reaction can bring one on demand.`,
   weather_entity: 'Leave empty to use the first weather entity found.',
   mode_entity: 'An input_select / select whose state is a mood name (sleep, morning, work, meal, evening, party, movie, gaming, cozy, away). Anything else falls back to the schedule.',
   duration: 'How long the mood lasts after it was activated.',
@@ -2801,7 +3495,8 @@ class PixelVillageCardEditor extends HTMLElement {
     if (!c.triggers.length) delete c.triggers;
     for (const k of ['title', 'weather_entity', 'mode_entity']) if (!c[k]) delete c[k];
     if (c.sun_entity === 'sun.sun' || !c.sun_entity) delete c.sun_entity;
-    for (const k of ['visitors', 'animals', 'show_status']) if (c[k] === true) delete c[k];
+    for (const k of ['visitors', 'animals', 'show_status', 'events']) if (c[k] === true) delete c[k];
+    if (c.event_frequency === 'daily' || !c.event_frequency) delete c.event_frequency;
     if (c.fps === 15) delete c.fps;
     if (c.schedule) {
       const sch = {};
@@ -2876,10 +3571,17 @@ class PixelVillageCardEditor extends HTMLElement {
         { name: 'visitors', selector: { boolean: {} } },
         { name: 'animals', selector: { boolean: {} } },
       ] },
+      { type: 'grid', name: '', schema: [
+        { name: 'events', selector: { boolean: {} } },
+        { name: 'event_frequency', selector: { select: { mode: 'dropdown', options: [
+          { value: 'rare', label: 'Rarely (a couple a week)' }, { value: 'daily', label: 'About once a day' }, { value: 'often', label: 'Often (a few a day)' },
+        ] } } },
+      ] },
       { name: 'show_status', selector: { boolean: {} } },
       { name: 'fps', selector: { number: { min: 2, max: 30, step: 1, mode: 'box' } } },
     ], {
       title: cfg.title ?? '', villagers: cfg.villagers ?? 6, visitors: cfg.visitors !== false, animals: cfg.animals !== false,
+      events: cfg.events !== false, event_frequency: cfg.event_frequency ?? 'daily',
       show_status: cfg.show_status !== false, fps: cfg.fps ?? 15,
     }, (v) => { Object.assign(this._config, v); this._emit(); }));
 
@@ -3082,7 +3784,7 @@ class PixelVillageCard extends HTMLElement {
   setConfig(config) {
     validateConfig(config);
     // Title, status line and frame rate don't need a new village (keeps the editor preview steady).
-    const worldKey = JSON.stringify({ ...config, title: 0, show_status: 0, fps: 0 });
+    const worldKey = JSON.stringify({ ...config, title: 0, show_status: 0, fps: 0, events: 0, event_frequency: 0 });
     const keepWorld = this._villagers && worldKey === this._worldKey;
     this._worldKey = worldKey;
     this._config = {
@@ -3153,6 +3855,7 @@ class PixelVillageCard extends HTMLElement {
     this._connected = false;
     this._io?.disconnect();
     document.removeEventListener('visibilitychange', this._onVis);
+    EVENT_BLOCKS.delete(this);
     this._sync();
   }
 
@@ -3280,6 +3983,7 @@ class PixelVillageCard extends HTMLElement {
     for (let i = 0; i < 8; i++) this._makeGuest('visitor', g);
     this._makeGuest('mail', g);
     INSTRUMENTS.forEach((instr, i) => this._makeGuest('band', g, { instr, instrIdx: i }));
+    for (const [kind, E] of Object.entries(EVENTS)) E.crew.forEach((role, i) => this._makeGuest(role, g, { eventKind: kind, crewIdx: i }));
     this._nextMail = rand(15, 45);
     this._nextGuest = 0;
     this._initAnimals(g);
@@ -3300,7 +4004,13 @@ class PixelVillageCard extends HTMLElement {
     this._nextFlash = rand(4, 12);
     this._mode = undefined;
     this._bgKey = null;
+    this._event = null;
+    this._eventReq = null;
+    this._display = null;
+    this._eventsSeen = false;
+    this._lastEnded = null;
     this._updateMode();
+    this._spawnEvents();
     this._sync();
   }
 
@@ -3355,7 +4065,12 @@ class PixelVillageCard extends HTMLElement {
     let mode, reason = null;
 
     const trig = this._matchTrigger();
-    if (trig) { mode = trig.mode === 'auto' ? scheduleMode(h, this._schedule) : trig.mode; reason = trig.mode === 'auto' && !trig.label ? null : trig; }
+    this._eventReq = null;
+    if (trig && eventOfMode(trig.mode)) {
+      // an event reaction brings that event to the village; the mood follows the normal day
+      this._eventReq = eventOfMode(trig.mode);
+      mode = scheduleMode(h, this._schedule); reason = trig.label ? trig : null;
+    } else if (trig) { mode = trig.mode === 'auto' ? scheduleMode(h, this._schedule) : trig.mode; reason = trig.mode === 'auto' && !trig.label ? null : trig; }
     if (!mode && cfg.mode_entity && MODES[states[cfg.mode_entity]?.state]) mode = states[cfg.mode_entity].state;
     if (!mode) mode = scheduleMode(h, this._schedule);
 
@@ -3380,8 +4095,10 @@ class PixelVillageCard extends HTMLElement {
     if (mode === 'meal') text = h < 11 ? 'Breakfast by the fire' : h < 15 ? 'Lunch is served' : 'Dinner by the fire';
     if (mode === 'work' && this._weather.rain) text = 'Working through the rain';
     if (mode === 'work' && this._weather.snow) text = 'A snowy day at work';
-    const label = reason?.label || MODES[mode].label;
-    const status = `${MODES[mode].icon} ${label} · ${text}`;
+    const ev = this._event, evOn = ev && (ev.stage === 'setup' || ev.stage === 'open');
+    if (evOn) text = ev.E.text;
+    const label = reason?.label || (evOn ? ev.E.label : MODES[mode].label);
+    const status = `${evOn ? ev.E.icon : MODES[mode].icon} ${label} · ${text}`;
     if (status !== this._statusText) {
       this._statusText = status;
       this._status.textContent = status;
@@ -3429,6 +4146,166 @@ class PixelVillageCard extends HTMLElement {
     }
   }
 
+  /* ----- random events: see EVENTS ----- */
+
+  _dayInfo() {
+    const now = this._now();
+    return { day: dayKey(now), min: now.getHours() * 60 + now.getMinutes() };
+  }
+
+  _daySchedule(day) {
+    const key = `${day}|${this._config.seed || 42}|${this._config.event_frequency || 'daily'}`;
+    if (this._schedKey !== key) { this._schedKey = key; this._sched = eventsForDay(day, this._config.seed || 42, this._config.event_frequency || 'daily'); }
+    return this._sched;
+  }
+
+  // What should be happening: the demo's preview, then a Home Assistant reaction, then today's schedule.
+  _wantedEvent() {
+    if (this.previewEvent && EVENTS[this.previewEvent]) return { kind: this.previewEvent, source: 'preview' };
+    if (this._eventReq) return { kind: this._eventReq, source: 'reaction' };
+    if (this._config.events === false) return null;
+    const { day, min } = this._dayInfo();
+    const e = this._daySchedule(day).find((x) => min >= x.start && min < x.end);
+    return e ? { ...e, source: 'schedule', day, min } : null;
+  }
+
+  _eventKey(want) {
+    return want.source === 'schedule' ? `s${want.day}|${want.start}` : `${want.source}|${want.kind}`;
+  }
+
+  // Events stay away in bad weather and from moods that don't suit them.
+  _eventOk(kind, source) {
+    const w = this._weather, m = this._mode;
+    if (w.rain || w.snow || w.heavy) return false;
+    if (source === 'schedule') return EVENTS[kind].moods.includes(m);
+    return !['sleep', 'away', 'cozy', 'movie', 'gaming', 'party'].includes(m);
+  }
+
+  // Once a second: start, wind down or finish events, keep their leftovers and footprints current.
+  _spawnEvents() {
+    const first = !this._eventsSeen;
+    this._eventsSeen = true;
+    const want = this._wantedEvent(), ev = this._event;
+    if (!want) this._lastEnded = null;
+    if (!ev) {
+      if (want && this._eventKey(want) !== this._lastEnded && this._eventOk(want.kind, want.source)) this._startEvent(want, first);
+    } else {
+      const keep = want && want.kind === ev.kind && this._eventOk(ev.kind, want.source);
+      if (!keep && ['arrive', 'setup', 'open'].includes(ev.stage)) this._eventStage(ev.E.packSecs && ev.stage !== 'arrive' ? 'packup' : 'leave');
+      if (ev.stage === 'arrive' && ev.crew.every((v) => v.ready)) this._eventStage(ev.E.setupSecs ? 'setup' : 'open');
+      ev.E.tick?.(this, ev);
+      if (ev.stage === 'leave' && ev.crew.every((v) => !v.active)) { this._lastEnded = ev.key; this._event = null; }
+    }
+    const { day, min } = this._dayInfo();
+    for (const E of Object.values(EVENTS)) E.keep?.(this, day, min);
+    const blocks = this._eventBlocks(), key = JSON.stringify(blocks);
+    EVENT_BLOCKS.set(this, blocks);
+    if (key !== this._blockKey) {
+      // something new went up: whoever was standing there steps aside
+      this._blockKey = key;
+      for (const v of this._villagers) if (!v.inside && !v.gone && !v.walking && blocked(v.x, v.y)) v.rethinkAt = this._t + 0.1;
+      for (const a of this._animals) if (!a.hidden && a.alt <= 0 && blocked(a.x, a.y)) this._goAnimal(a, a.x, a.y, 14, 'walk');
+    }
+  }
+
+  _startEvent(want, instant) {
+    const E = EVENTS[want.kind], now = Date.now();
+    const mins = want.source === 'preview' ? (E.previewMins || (E.minutes[0] + E.minutes[1]) / 2) : (E.minutes[0] + E.minutes[1]) / 2;
+    const ev = {
+      kind: want.kind, E, stage: 'arrive', progress: 0, source: want.source, key: this._eventKey(want), data: {},
+      startAt: want.source === 'schedule' ? now - (want.min - want.start) * 60000 : now,
+      endAt: want.source === 'schedule' ? now + (want.end - want.min) * 60000 : now + mins * 60000,
+      crew: this._villagers.filter((v) => v.eventKind === want.kind),
+    };
+    ev.dur = Math.max(60000, ev.endAt - ev.startAt);
+    this._event = ev;
+    ev.crew.forEach((v, i) => {
+      Object.assign(v, { ready: false, knocked: false, pulling: false, pushing: false });
+      this._activate(v, 9999, instant ? 0 : i * 1.2);
+    });
+    E.start?.(this, ev);
+    if (!instant) return;
+    // the card opened partway through: everything is already set up
+    ev.stage = 'open'; ev.progress = 1;
+    for (const v of ev.crew) v.ready = true;
+    E.instant?.(this, ev);
+    E.tick?.(this, ev);
+    if (this._event !== ev || ev.stage !== 'open') return;
+    for (const v of ev.crew) {
+      v.gone = false; v.x = FIRE.x; v.y = FIRE.y + 12;
+      const p = this._plan(v);
+      if (p.gone) { v.gone = true; continue; }
+      v.plan = p; v.x = v.tx = p.x; v.y = v.ty = p.y; v.carry = p.drop ? null : p.carry || null; this._arrive(v); v.actT = rand(0, p.dur);
+    }
+  }
+
+  _eventStage(stage) {
+    const ev = this._event;
+    if (!ev || ev.stage === stage) return;
+    ev.stage = stage;
+    for (const v of ev.crew) if (v.active) v.rethinkAt = this._t + rand(0.2, 1.2);
+  }
+
+  // Crew members doing 'build' put the event up (setup) or take it down (packup).
+  _buildEvent(dt) {
+    const ev = this._event;
+    if (!ev || !ev.E.setupSecs) return;
+    const n = ev.crew.length;
+    if (ev.stage === 'setup') { ev.progress = Math.min(1, ev.progress + dt / ev.E.setupSecs / n); if (ev.progress >= 1) this._eventStage('open'); }
+    else if (ev.stage === 'packup') { ev.progress = Math.max(0, ev.progress - dt / ev.E.packSecs / n); if (ev.progress <= 0) this._eventStage('leave'); }
+  }
+
+  // An onlooker's plan for whatever's on (a few at a time, so the crew stays visible).
+  _eventVisit(v) {
+    const ev = this._event;
+    if (v.eventKind) return null;
+    const crowd = this._villagers.filter((o) => o !== v && o.plan?.onlook && !o.gone && !o.inside).length;
+    let p = null;
+    if (ev && ev.stage === 'open' && ev.E.visit) { if (crowd < (ev.E.maxVisitors || 4)) p = ev.E.visit(this, v, ev); }
+    else if (!ev && this._display && ['morning', 'work', 'meal', 'evening'].includes(this._mode) && crowd < 3 && Math.random() < 0.3) p = EVENTS.artists.visit(this, v, null);
+    if (p) p.onlook = true;
+    return p;
+  }
+
+  _wanderNear(v) {
+    return { x: Math.max(4, Math.min(W - 4, v.x + rand(-6, 6))), y: Math.max(HORIZON + 8, Math.min(H - 2, v.y + rand(-2, 2))) };
+  }
+
+  _eventBlocks() {
+    const ev = this._event, out = [];
+    if (ev?.E.blocks) out.push(...ev.E.blocks(this, ev));
+    if (this._display && ev?.kind !== 'artists') out.push(...EVENTS.artists.blocks(this, null));
+    return out;
+  }
+
+  _eventArt(key, make) {
+    const a = this._art(), m = (a.events ||= new Map());
+    let spr = m.get(key);
+    if (!spr) m.set(key, (spr = make()));
+    return spr;
+  }
+
+  // Event props join the depth-sorted scene. add(x, y, sortY, sprite, flip, raw) – raw sprites are full-canvas layers.
+  _eventItems(items, ctx) {
+    const ev = this._event;
+    let o = 11000;
+    const add = (x, y, sortY, spr, flip = false, raw = false) => {
+      const X = raw ? 0 : Math.round(x * S) - spr.ax, Y = raw ? 0 : Math.round(y * S) - spr.by;
+      items.push({ y: sortY, o: o++, d: () => {
+        if (!flip) ctx.drawImage(spr.cv, X, Y);
+        else { ctx.setTransform(-1, 0, 0, 1, X + spr.cv.width, Y); ctx.drawImage(spr.cv, 0, 0); ctx.setTransform(1, 0, 0, 1, 0, 0); }
+      } });
+    };
+    if (ev?.E.props) ev.E.props(this, ev, add);
+    if (this._display && ev?.kind !== 'artists') EVENTS.artists.props(this, null, add);
+  }
+
+  _trimToday() {
+    const { day } = this._dayInfo();
+    if (this._trimmed?.day !== day) this._trimmed = { day, set: new Set() };
+    return this._trimmed;
+  }
+
   /* ----- guests: visitors, the mail carrier and the travelling band ----- */
 
   _makeGuest(job, rnd, extra = {}) {
@@ -3438,7 +4315,9 @@ class PixelVillageCard extends HTMLElement {
       ? { skin: p(LOOKS.skin), hair: p(LOOKS.hair), shirt: '#3a5a9a', pants: '#2a3a5a', style: 'short' }
       : job === 'band'
         ? { skin: p(LOOKS.skin), ...BAND_LOOKS[extra.instrIdx] }
-        : {
+        : CREW_LOOKS[job]
+          ? { skin: p(LOOKS.skin), hair: p(LOOKS.hair), ...CREW_LOOKS[job](p, rnd, extra.crewIdx || 0) }
+          : {
           skin: p(LOOKS.skin), hair: p(LOOKS.hair), style: rnd() < 0.4 ? 'long' : 'short', beard: rnd() < 0.15,
           shirt: p(['#e85a5a', '#5a8ae8', '#e8c04a', '#8a5ac8', '#4ab8a0', '#e88a3a', '#d0d0d8', '#6a9a3a']),
           pants: p(['#3a3a48', '#4a5a8a', '#6a5040', '#2a4a3a', '#7a6a5a']),
@@ -3454,7 +4333,7 @@ class PixelVillageCard extends HTMLElement {
       v.hat = p([null, null, 'sunhat', 'beanie', 'cap']);
       v.gear = rnd() < 0.35; // hikers with backpacks and walking sticks
     }
-    if (job === 'band') v.hat = look.hat;
+    if (job === 'band' || CREW_LOOKS[job]) v.hat = look.hat;
     this._villagers.push(v);
     return v;
   }
@@ -3473,9 +4352,11 @@ class PixelVillageCard extends HTMLElement {
 
   _spawnGuests() {
     const cfg = this._config, m = this._mode, t = this._t;
+    this._spawnEvents();
     if (cfg.visitors === false) return;
     {
-      const target = { sleep: 0, cozy: 1, away: 1, morning: 2, work: 3, meal: 3, evening: 4, movie: 5, gaming: 4, party: 6 }[m] ?? 2;
+      let target = { sleep: 0, cozy: 1, away: 1, morning: 2, work: 3, meal: 3, evening: 4, movie: 5, gaming: 4, party: 6 }[m] ?? 2;
+      if (this._event?.stage === 'open') target += this._event.E.extraVisitors || 0;
       const vis = this._villagers.filter((v) => v.job === 'visitor');
       if (vis.filter((v) => v.active).length < target && t > (this._nextGuest || 0)) {
         const free = vis.filter((v) => !v.active && v.gone);
@@ -3500,6 +4381,11 @@ class PixelVillageCard extends HTMLElement {
     if (!v.active) return out();
     if (v.leaving) return out();
     const leave = () => { v.leaving = true; return out(); };
+    if (v.eventKind) {
+      const ev = this._event;
+      if (!ev || ev.kind !== v.eventKind) return leave();
+      return ev.E.crewPlan(this, v, ev, ev.crew.indexOf(v)) || leave();
+    }
     if (v.job === 'band') return m === 'party' ? { ...BAND_SPOTS[v.instrIdx], action: 'perform', dur: rand(20, 40) } : leave();
     if (v.job === 'mail') return this._planMail(v, leave);
     if (m === 'sleep' || this._t > v.stayUntil) return leave();
@@ -3507,6 +4393,9 @@ class PixelVillageCard extends HTMLElement {
       const a = rand(0, Math.PI * 2), x = FIRE.x + Math.cos(a) * 21, y = FIRE.y + 1 + Math.sin(a) * 9;
       return { x, y, face: x < FIRE.x ? 1 : -1, action, dur: rand(10, 20) };
     };
+    // something's going on in the village: visitors drift over to see it
+    const look = this._eventVisit(v);
+    if (look && Math.random() < (this._event?.E.draw ?? 0.4)) return look;
     switch (m) {
       case 'party':
         if (r < 0.7) {
@@ -3594,6 +4483,7 @@ class PixelVillageCard extends HTMLElement {
   }
 
   _goAnimal(a, x, y, speed, state = 'walk', direct = false) {
+    if (!direct) [x, y] = freeSpot(x, y); // never stop inside a house or an event's footprint
     a.path = direct ? [[x, y]] : route(a.x, a.y, x, y);
     [a.tx, a.ty] = a.path.shift();
     a.speed = speed; a.state = state;
@@ -3654,13 +4544,16 @@ class PixelVillageCard extends HTMLElement {
           }
           if (a.state === 'arch' && a.t <= 0) {
             let far = 0, fd = 0;
-            CAT_SPOTS.forEach(([x, y], i) => { const d = Math.hypot(x - a.x, y - a.y); if (d > fd) { fd = d; far = i; } });
+            CAT_SPOTS.forEach(([x, y], i) => { const d = Math.hypot(x - a.x, y - a.y); if (d > fd && !blocked(x, y)) { fd = d; far = i; } });
             a.spot = far; this._goAnimal(a, ...CAT_SPOTS[far], 24, 'run'); a.rest = 'sit';
             break;
           }
           if (a.t <= 0) {
             if (a.state === 'idle' || a.state === 'sit') { a.state = Math.random() < 0.6 ? 'curl' : 'sit'; a.t = night ? rand(4, 10) : rand(15, 45); }
-            else { a.spot = Math.floor(Math.random() * CAT_SPOTS.length); this._goAnimal(a, ...CAT_SPOTS[a.spot], 7, 'walk'); a.rest = 'sit'; }
+            else {
+              const open = CAT_SPOTS.map((_, i) => i).filter((i) => !blocked(...CAT_SPOTS[i]));
+              a.spot = pick(open.length ? open : [0]); this._goAnimal(a, ...CAT_SPOTS[a.spot], 7, 'walk'); a.rest = 'sit';
+            }
           }
           break;
         }
@@ -3840,7 +4733,10 @@ class PixelVillageCard extends HTMLElement {
         if (job === 'child' && r < 0.3) return { ...wander(), action: 'play', dur: rand(2, 4) };
         if (r < 0.8) return { ...seat(), action: 'eat', dur: rand(8, 16) };
         return chat();
-      case 'evening':
+      case 'evening': {
+        const look = this._eventVisit(v);
+        if (look && Math.random() < 0.3) return look;
+      }
         if (job === 'child') return home(rand(30, 60));
         if (job === 'bard') return Math.random() < 0.5 ? { ...STAGE_SPOT, face: 1, action: 'perform', dur: rand(12, 20) } : { ...seat(), action: 'play', dur: rand(10, 20) };
         if (r < 0.2 && this._villagers.some((o) => o.action === 'perform')) return { ...AMPHI_SEATS[v.id], action: 'sit', dur: rand(10, 18) };
@@ -3859,6 +4755,10 @@ class PixelVillageCard extends HTMLElement {
       }
       default: // work
         if (this._weather.heavy || (this._weather.rain && r < 0.35)) return home(rand(15, 30));
+        if (job !== 'cook' && Math.random() < (job === 'child' ? 0.35 : 0.12)) {
+          const look = this._eventVisit(v);
+          if (look) return look;
+        }
         if (job !== 'child' && job !== 'cook' && Math.random() < (job === 'bard' ? 0.3 : 0.15)) {
           return cafe(Math.random() < 0.65 ? 'laptop' : 'sip', rand(10, 20));
         }
@@ -3924,13 +4824,15 @@ class PixelVillageCard extends HTMLElement {
     const p = v.plan;
     v.walking = false;
     if (p.enter) v.inside = true;
-    if (p.gone) { v.gone = true; if (v.guest) { v.active = false; v.leaving = false; v.bike = false; v.sprites.clear(); } }
+    if (p.gone) { v.gone = true; if (v.guest) { v.active = false; v.leaving = false; v.bike = false; v.pulling = false; v.pushing = false; v.sprites.clear(); } }
     if (p.face) v.face = p.face;
     if (p.drop) v.carry = null;
     p.onArrive?.();
     v.action = p.action;
     v.actT = p.dur;
     v.fxT = rand(0, 0.5);
+    // the spot was free when the walk began, but something (an event's stall) has gone up there since
+    if (!v.inside && !v.gone && !v.rethinkAt && blocked(v.x, v.y)) v.rethinkAt = this._t + 0.2;
   }
 
   /* ----- simulation ----- */
@@ -3959,6 +4861,7 @@ class PixelVillageCard extends HTMLElement {
         continue;
       }
       v.actT -= dt;
+      if (v.action === 'build') this._buildEvent(dt);
       if (v.action === 'setup') this._screen = Math.min(1, this._screen + dt / 3);
       if (v.action === 'teardown') this._screen = Math.max(0, this._screen - dt / 3);
       if ((v.fxT -= dt) <= 0) this._actionFx(v);
@@ -4076,6 +4979,35 @@ class PixelVillageCard extends HTMLElement {
       case 'idle':
         v.fxT = rand(1.5, 4);
         if (Math.random() < 0.5) v.face = -v.face;
+        break;
+      // event crews
+      case 'trim':
+        v.fxT = 0.3;
+        this._spawn({ x: hx + v.face * 4, y: v.y - 4, vx: v.face * rand(2, 8), vy: rand(-8, -2), life: 0.7, c: pick(['#3a7a2a', '#5a9a3a', '#7ab84a']), grav: true, layer: 0 });
+        break;
+      case 'prune':
+        v.fxT = 0.4;
+        this._spawn({ x: hx + v.face * 3, y: v.y - 15, vx: rand(-4, 4), vy: rand(0, 3), life: 1.4, c: pick(['#5a9a3a', '#e8c040', '#7ab84a']), layer: 0 });
+        break;
+      case 'chisel':
+        v.fxT = 0.45;
+        for (let i = 0; i < 2; i++) this._spawn({ x: hx + v.face * 3, y: v.y - 6, vx: rand(-10, 10), vy: rand(-20, -8), life: 0.5, c: pick(['#c8c4b8', '#a8a49a']), grav: true, layer: 0 });
+        break;
+      case 'paint':
+        v.fxT = 0.6;
+        this._spawn({ x: hx + v.face * 4, y: v.y - 8, vx: v.face * 3, vy: 2, life: 0.5, c: pick(['#e04848', '#3a8ae0', '#f0c030', '#3aa86a']), layer: 0 });
+        break;
+      case 'cheer': case 'admire': case 'browse':
+        v.fxT = rand(2, 4);
+        if (Math.random() < 0.3) this._spawn({ x: v.x, y: v.y - 11, vx: 0, vy: -5, life: 1.4, g: 'heart', c: '#ff6080', layer: 1 });
+        break;
+      case 'announce': case 'juggle': case 'crank': case 'sell':
+        v.fxT = rand(1.5, 3);
+        if (v.action === 'announce' && Math.random() < 0.5) this._spawn({ x: v.x + v.face * 3, y: v.y - 11, vx: rand(-2, 2), vy: -6, life: 1.6, g: 'note', c: pick(['#fff4a0', '#ffd0f0']), layer: 1 });
+        break;
+      case 'toss':
+        v.fxT = rand(1.2, 2);
+        this._spawn({ x: hx + v.face * 3, y: v.y - 8, vx: v.face * 14, vy: -10, life: 0.6, c: '#f0c030', grav: true, layer: 1 });
         break;
       default:
         v.fxT = 1;
@@ -4247,11 +5179,17 @@ class PixelVillageCard extends HTMLElement {
     const houses = (sharedArt.houses[snow ? 1 : 0] ||= HOUSES.map((h) => makeHouse(h, snow)));
     const items = [{ y: 112.5, o: 2000, d: () => { ctx.drawImage(stage.cv, stage.x, stage.y); this._drawScreen(ctx); } }];
     HOUSES.forEach((h, i) => items.push({ y: h.base + 0.3, o: 5000 + i, d: () => ctx.drawImage(houses[i].cv, houses[i].x, houses[i].y) }));
-    this._props.forEach((pr, i) => items.push({ y: pr.sortY, o: 6000 + i, d: () => ctx.drawImage(pr.cv, pr.x, pr.y) }));
+    this._props.forEach((pr, i) => items.push({ y: pr.sortY, o: 6000 + i, d: () => ctx.drawImage(pr.shrub !== undefined && !snow && this._trimmed?.set.has(pr.shrub) ? this._trimmedShrub(pr.shrub) : pr.cv, pr.x, pr.y) }));
     TABLES.forEach(([tx, ty], i) => items.push({ y: (ty + 3) / S, o: 7000 + i, d: () => this._drawTable(ctx, i, tx, ty) }));
     items.sort(byDepth);
     this._staticSnow = snow;
     return (this._static = items);
+  }
+
+  // A landscaped copy of a shrub, per card and season (the shared land props never change).
+  _trimmedShrub(i) {
+    const key = `shrub${i}|${this._season}`;
+    return this._eventArt(key, () => shrubProp(SHRUBS[i], false, this._season, true)).cv;
   }
 
   _render() {
@@ -4292,6 +5230,7 @@ class PixelVillageCard extends HTMLElement {
       const bk = (a.bike ||= makeParkedBike()), px = Math.round(v.parked.x * S), py = Math.round(v.parked.y * S);
       items.push({ y: v.parked.y - 0.01, o: o++, d: () => ctx.drawImage(bk.cv, px - bk.ax, py - bk.by) });
     }
+    this._eventItems(items, ctx);
     items.sort(byDepth);
     const fixed = this._staticItems(this._landSnow);
     for (let i = 0, j = 0; i < items.length || j < fixed.length;) {
@@ -4322,6 +5261,7 @@ class PixelVillageCard extends HTMLElement {
     this._drawFlames(ctx, dark);
     this._redrawInFrontOfLights(ctx, tint, dark);
     if (this._mode === 'party') this._drawPartyLights(ctx, dark);
+    if (this._event?.E.lights) this._event.E.lights(this, ctx, this._event, dark);
     if ((this._mode === 'movie' || this._mode === 'gaming') && this._screen >= 1) this._drawFilm(ctx, dark);
     if (this._mode === 'gaming' && dark) for (const v of this._villagers) if (!v.walking && v.action === 'handheld') this._glow(ctx, v.x * S + v.face * 6, v.y * S - 11, 8, '150,210,255', 0.45);
     if (this._screen > 0) this._drawReels(ctx);
@@ -4874,8 +5814,10 @@ class PixelVillageCard extends HTMLElement {
       case 'setup': case 'teardown': pose = 'setup'; break;
       case 'perform': pose = 'lute'; break;
       case 'play': pose = v.job === 'child' ? 'kidplay' : this._mode === 'evening' ? 'lutesit' : 'lute'; break;
-      default: pose = 'idle';
+      default: pose = ACTION_POSE[act] || 'idle';
     }
+    if (pose === 'walk' && v.pulling) pose = 'pull';
+    else if (pose === 'walk' && v.pushing) pose = 'push';
     const [, rate, order] = ANIM[pose];
     const step = Math.floor(this._t * rate + v.seed * 10) % order.length;
     return { pose, frame: order[step], step };

@@ -123,12 +123,41 @@ Repo: `github.com/frankdeluxe5k/pixel-village-card` (private; going public for H
   (screen rolls down, popcorn, seats on the tiers), gaming (retro games on the screen with wired
   controllers to a console on the deck, handhelds at the café), cozy (everyone indoors), away (backpacks and
   walking sticks, last one out hangs "BACK SOON!" on the coffee cart).
+- Events: merchant (hand cart east of the pond), salesman (doors), artists (sculpture by the farm, on show
+  until bedtime), landscapers (trim shrubs into tidy domes for the day, prune trees from a ladder), fair (tent,
+  carousel, ring toss east of the pond, into the evening with lights). About one a day by default.
 - People: 6 residents by default (farmer, cook, woodcutter, water carrier, bard, kid), 8 visitors who come
   and go, a mail carrier on a red bicycle (letters or, randomly, parcels), a 4-piece band for parties:
   young garage-rock kids (drums, bass, two guitars; swoopy/spiky hair, tees, flannel, stripes, studded
   belts, white-soled sneakers) playing in front of the tavern, above the string lights over the square.
   Animals: 2 dogs (follow owners, nap at their door), a cat, birds (land only on open ground or roof ridges),
   rabbits, squirrels.
+
+## Random events (read before adding one)
+
+`EVENTS` (section "random events" in the card file) is the registry; everything else is generated from it:
+the schedule (`eventsForDay`: seeded by date + `seed`, a week of history so the same kind never runs on
+consecutive days), reaction modes (`event:<kind>` in `REACTION_MODES`/`MODE_OPTIONS`/`validateConfig`),
+suggestion words, the editor helper text and the demo's Event buttons. The card side is `_spawnEvents`
+(once a second: preview → reaction → schedule; mood/weather gates in `_eventOk`), `_startEvent` (crew from
+`_makeGuest(role)`, `instant` placement when the card loads mid-event), `_eventStage`, `_buildEvent`
+(setup/packup progress from crew doing `build`), `_eventVisit` (capped onlookers, `plan.onlook`),
+`_eventItems` (props join the depth sort), `EVENT_BLOCKS` (temporary footprints `blocked()` checks; anyone
+standing where one appears re-plans, and `_arrive` re-plans anyone who lands inside one).
+
+Adding an event:
+1. A registry entry: label/icon/text, `crew` roles, `weight`, `hours`, `minutes`, `moods`, `suggest` words,
+   optional `setupSecs`/`packSecs`, and hooks (`crewPlan` required; `start`, `instant`, `tick`, `visit`,
+   `props`, `blocks`, `lights`, `keep`). Put spots on open ground off the NAV paths, away from doors and
+   benches; reuse `CART_AT`/`SCULPT_AT`/`FAIR_AT` areas or add a constant beside them.
+2. Crew looks in `CREW_LOOKS` (outfit pieces drawn by `drawOutfit`; add a piece there for a new garment),
+   hats in `HATS`.
+3. New poses: `KEYS` + `ANIM` + `ACTION_POSE`; tools via `POSE_TOOL`/`drawTool`/`drawCarry`; particles in
+   `_actionFx`; glyphs in `GLYPHS`.
+4. Prop art as `make…()` functions in "event props" (cached with `_eventArt`, never per frame).
+5. Lasting changes (like trimmed shrubs) go through per-card overrides, never the shared land props.
+6. README events table row. Check with the bench: each stage's screenshot, nobody/no animal inside
+   `blocked()` rects, frame time under ~7 ms at 6× throttle, `eventsForDay` counts, real-HA reaction.
 
 ## Depth and lighting (read before touching rendering)
 

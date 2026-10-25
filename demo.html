@@ -41,6 +41,7 @@
       <button id="lapse" aria-pressed="false">Time-lapse</button>
     </div>
     <div class="row" id="modes"><label>Scene</label></div>
+    <div class="row" id="events"><label>Event</label></div>
     <div class="row">
       <label for="weather">Weather</label>
       <select id="weather">
@@ -105,6 +106,21 @@
       push();
     });
     modes.appendChild(b);
+  }
+  // one button per event in the card's registry, so new events show up here by themselves
+  const evRow = document.getElementById('events');
+  for (const [k, E] of [['', { icon: '', label: 'None' }], ...Object.entries(EVENTS)]) {
+    const b = document.createElement('button');
+    b.textContent = `${E.icon} ${E.label}`.trim();
+    b.setAttribute('aria-pressed', !k);
+    b.addEventListener('click', () => {
+      card.previewEvent = k || undefined;
+      // events happen in the daytime (the fair runs into the evening)
+      if (k && (card.previewHour < 8 || card.previewHour > (k === 'fair' ? 20 : 17))) { card.previewHour = k === 'fair' ? 16 : 11; hour.value = card.previewHour; show(card.previewHour); }
+      evRow.querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', x === b));
+      push();
+    });
+    evRow.appendChild(b);
   }
   document.getElementById('season').addEventListener('change', (e) => {
     card.previewSeason = e.target.value || undefined;
