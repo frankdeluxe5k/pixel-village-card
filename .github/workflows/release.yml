@@ -1,0 +1,30 @@
+name: Release
+
+# Publishing a GitHub release builds the card and attaches dist/companion-village-card.js to it,
+# which is the file HACS downloads.
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build and attach
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - name: Check the version matches the tag
+        run: |
+          v=$(grep -o "'[^']*'" src/version.js | tr -d "'")
+          [ "v$v" = "${{ github.event.release.tag_name }}" ] || { echo "src/version.js says $v, tag is ${{ github.event.release.tag_name }}"; exit 1; }
+      - run: gh release upload "${{ github.event.release.tag_name }}" dist/companion-village-card.js --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}
