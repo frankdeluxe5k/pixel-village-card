@@ -23,6 +23,20 @@ export const HEAD = [
 ];
 
 export const HAIR = {
+  // no hair at all: the head's own highlight shines on top
+  bald: [],
+  // grey hair swept back into a bun at the back of the head
+  bun: [
+    'kkk..jjjjj....',
+    'khhkjhhhhhh...',
+    'khhkhhhhhhhhh.',
+    '.kjhhhhhhhhhhh',
+    '.hhhhhhhhhhkhk',
+    'hhhhhkkh..k...',
+    'hhhhk.........',
+    'khhk..........',
+    '.kk...........',
+  ],
   short: [
     '....jjjjj.....',
     '..jjjhhhhhh...',
@@ -150,10 +164,14 @@ export function drawHead(g, v, hy, skin, hair) {
     case 'grin': Q(6, 9, lip); Q(7, 9, '#fffaf0', 2); Q(9, 9, lip); Q(7, 10, dark, 2); break;
     case 'open': Q(7, 9, dark, 2); Q(7, 10, mixHex(dark, '#e07070', 0.6), 2); break;
     case 'smirk': Q(7, 9, lip, 2); Q(9, 8, lip); break;
+    case 'beam': Q(5, 8, lip); Q(10, 8, lip); Q(6, 9, lip, 4); Q(7, 9, '#fffaf0', 2); break; // a wide, upturned smile
     default: Q(7, 9, lip, 2);
   }
   Q(6, 10, skin.l, 2); // chin light
-  if (L.beard) tpl(g, BEARD, X, hy + 7, { h: hair.m, k: hair.d });
+  if (L.beard) {
+    tpl(g, BEARD, X, hy + 7, { h: hair.m, k: hair.d });
+    if (F.mouth === 'beam') { Q(5, 8, lip); Q(10, 8, lip); Q(6, 9, lip, 4); Q(7, 9, '#fffaf0', 2); } // a grin that shows through the beard
+  }
   else if (F.stache) { Q(6, 8, hair.m, 4); Q(6, 8, hair.d); Q(9, 8, hair.d); }
   tpl(g, HAIR[L.style], X - 1, hy - 2, { h: hair.m, k: hair.d, j: L.streak || hair.l });
   if (F.glasses) {

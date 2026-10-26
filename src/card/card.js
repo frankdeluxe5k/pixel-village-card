@@ -1,4 +1,5 @@
 // The card element: config, Home Assistant, lifecycle and the animation loop.
+import { DEFAULT_VILLAGERS } from '../content/jobs.js';
 import { animalMethods } from './animals.js';
 import { effectMethods } from './effects.js';
 import { eventMethods } from './events.js';
@@ -24,18 +25,18 @@ export class CompanionVillageCard extends HTMLElement {
 
   static getStubConfig(hass) {
     const weather = autoWeather(hass?.states || {});
-    return weather ? { villagers: 6, weather_entity: weather } : { villagers: 6 };
+    return weather ? { villagers: DEFAULT_VILLAGERS, weather_entity: weather } : { villagers: DEFAULT_VILLAGERS };
   }
 
   setConfig(config) {
     validateConfig(config);
     // Only who lives here needs a new village; everything else (reactions, schedule, entities, title...) is
     // read live, so the editor preview stays steady while the user types.
-    const worldKey = JSON.stringify([Number(config.villagers) || 6, config.seed || 42, config.visitors !== false, config.animals !== false]);
+    const worldKey = JSON.stringify([Number(config.villagers) || DEFAULT_VILLAGERS, config.seed || 42, config.visitors !== false, config.animals !== false]);
     const keepWorld = this._villagers && worldKey === this._worldKey;
     this._worldKey = worldKey;
     this._config = {
-      villagers: 6, fps: DEFAULT_FPS, show_status: true, sun_entity: 'sun.sun', triggers: [], ...config,
+      villagers: DEFAULT_VILLAGERS, fps: DEFAULT_FPS, show_status: true, sun_entity: 'sun.sun', triggers: [], ...config,
     };
     this._schedule = { ...DEFAULT_SCHEDULE };
     for (const [k, v] of Object.entries(config.schedule || {})) this._schedule[k] = parseHour(v);

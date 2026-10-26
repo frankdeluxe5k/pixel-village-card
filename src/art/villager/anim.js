@@ -19,16 +19,17 @@ export const KEYS = {
   ],
   stretch: [{ f: [1, 4], b: [-1, 4] }, { f: [2, -4], b: [-2, -4] }, { f: [2, -8], b: [-2, -8], bob: -1 }],
   eat: [{ f: [3, 4], b: [1, 5] }, { f: [3, 1], b: [1, 5] }, { f: [3, -3], b: [1, 5] }],
-  sip: [{ f: [4, 2], b: [2, 4] }, { f: [4, -1], b: [2, 4] }, { f: [3, -3], b: [2, 4] }],
+  // café poses: everyone sits behind a table, so hands stay on the tabletop (FY - 14) instead of dipping under it
+  sip: [{ f: [6, -2], b: [2, 4] }, { f: [5, -4], b: [2, 4] }, { f: [3, -4], b: [2, 4] }],
   watch: [{ f: [2, 4], b: [1, 5] }, { f: [3, 1], b: [1, 5] }, { f: [3, -3], b: [1, 5] }],
-  laptop: [{ f: [5, 1], b: [4, 2] }, { f: [5, 2], b: [4, 1] }, { f: [5, 1], b: [3, 2] }, { f: [6, 2], b: [4, 1] }],
+  laptop: [{ f: [5, -2], b: [4, -2] }, { f: [5, -3], b: [4, -2] }, { f: [5, -2], b: [3, -3] }, { f: [6, -3], b: [4, -2] }],
   lute: [{ f: [2, 4], b: [6, 0] }, { f: [2, 5], b: [6, -1] }, { f: [3, 4], b: [6, 0] }, { f: [2, 6], b: [7, 0] }],
   sweep: [{ f: [3, 4], b: [1, 5] }, { f: [4, 4], b: [2, 5] }, { f: [5, 4], b: [3, 5] }, { f: [4, 4], b: [2, 5] }],
   fetch: [{ f: [4, 5], b: [3, 3] }, { f: [4, 3], b: [3, 2] }, { f: [4, 1], b: [3, 1] }, { f: [4, 3], b: [3, 2] }],
   setup: [{ f: [3, -6], b: [-1, -8] }, { f: [2, -8], b: [0, -7] }, { f: [3, -9], b: [-1, -6] }, { f: [2, -7], b: [0, -8] }],
   serve: [{ f: [6, 1], b: [4, 2] }, { f: [5, -1], b: [4, 2] }, { f: [4, 2], b: [4, 2] }, { f: [6, 1], b: [4, 2] }],
   water: [{ f: [6, 1], b: [4, 2] }, { f: [6, 0], b: [4, 1] }],
-  handheld: [{ f: [4, 0], b: [3, 1] }, { f: [4, 1], b: [3, 1] }, { f: [4, 0], b: [3, 0] }],
+  handheld: [{ f: [4, -3], b: [3, -2] }, { f: [4, -2], b: [3, -2] }, { f: [4, -3], b: [3, -3] }],
   controller: [{ f: [3, 2], b: [2, 3] }, { f: [4, 2], b: [2, 2] }, { f: [3, 1], b: [2, 3] }],
   // sticks: snare hit, other hand down on the tom, crash
   band_drums: [{ f: [3, 3], b: [8, -5] }, { f: [2, -5], b: [10, 2] }, { f: [9, -4], b: [8, -5] }],
@@ -73,6 +74,11 @@ export const KEYS = {
   bounce: [{ f: [4, -2], b: [-1, 5] }, { f: [4, 0], b: [-1, 5] }, { f: [4, 1], b: [-1, 5], bob: 1 }, { f: [4, -1], b: [-1, 5] }],
   kick: [{ f: [2, 3], b: [-3, 2], legs: [1, 0, -2, 1] }, { f: [3, 2], b: [-4, 1], legs: [0, 0, 3, 1], bob: -1 }, { f: [2, 4], b: [-2, 4] }],
   spintop: [{ f: [3, 4], b: [2, 5], bob: 1 }, { f: [3, 4], b: [2, 5], bob: 1 }],
+  // catch between the two kids: ball held at the chest, arms out ready for the throw coming in
+  holdball: [{ f: [3, 0], b: [4, 1] }, { f: [3, 0], b: [4, 1], bob: -1 }],
+  catchready: [{ f: [5, -3], b: [7, -2] }, { f: [5, -2], b: [7, -1], bob: -1 }],
+  // the grandmother knitting in her lap, needles clicking
+  knit: [{ f: [3, 2], b: [2, 3] }, { f: [4, 2], b: [1, 3] }, { f: [3, 1], b: [2, 3] }, { f: [4, 2], b: [1, 2] }],
   // work: a flat side swing, leaning on the axe for a breather
   chop_side: [
     { f: [-3, -2], b: [-5, -1], dir: [-1, -0.25] }, { f: [3, -1], b: [1, 0], dir: [0.95, -0.3] },
@@ -125,6 +131,7 @@ export const ANIM = {
   kid_hop: ['kid_hop', 5, [0, 1, 0, 1, 2, 2]], kid_twirl: ['kid_twirl', 7, [0, 1, 2, 3]],
   yoyo: ['yoyo', 5, [0, 1, 2, 3]], bounce: ['bounce', 5, [0, 1, 2, 3]], kick: ['kick', 4, [0, 1, 2, 2, 2, 2]], spintop: ['spintop', 8, [0, 1]],
   throwball: ['toss', 4, [0, 0, 0, 1, 2, 3, 3, 3]],
+  holdball: ['holdball', 1.5, [0, 0, 1, 1]], catchready: ['catchready', 2, [0, 1]], knit: ['knit', 4, [0, 1, 2, 3]],
   chop_side: ['chop_side', 7, [0, 1, 2, 3]], chop_rest: ['chop_rest', 1.2, [0, 1]],
   farm_dig: ['farm_dig', 7, [0, 1]], farm_weed: ['farm_weed', 3, [0, 1, 0, 2]],
   sweep_wide: ['sweep_wide', 4, [0, 1, 2, 3]], sweep_lean: ['sweep_lean', 1.2, [0, 1]],
@@ -163,13 +170,16 @@ for (const [base, list] of Object.entries(VARIANTS)) for (const [pose] of list) 
 export const ACTION_POSE = {
   build: 'setup', sell: 'chat', pitch: 'chat', browse: 'idle', admire: 'idle', chisel: 'sign', cheer: 'dance', hitch: 'setup',
   knock: 'knock', shrug: 'shrug', paint: 'paint', trim: 'trim', prune: 'prune', crank: 'crank', toss: 'toss', announce: 'announce', juggle: 'juggle',
-  rake: 'rake', shovel: 'shovel', yoyo: 'yoyo', bounce: 'bounce', spintop: 'spintop', playfetch: 'throwball', tag: 'kidplay', sow: 'sow', throw: 'throw', harvest: 'harvest', snowman: 'pat', leap: 'kidplay',
+  rake: 'rake', shovel: 'shovel', yoyo: 'yoyo', bounce: 'bounce', spintop: 'spintop', playfetch: 'throwball', tag: 'kidplay',
+  catch: 'catchready', knit: 'knit', mend: 'sign', feed: 'sow', tend: 'water', sow: 'sow', throw: 'throw', harvest: 'harvest', snowman: 'pat', leap: 'kidplay',
 };
 // Tools held for a pose (by frame where it matters).
 export const POSE_TOOL = {
   paint: () => 'brush', trim: () => 'shears', prune: () => 'shears', toss: (f) => (f < 2 ? 'ring' : null), juggle: () => 'balls',
   rake: () => 'rake', shovel: () => 'shovel', throw: (f) => (f < 2 ? 'snowball' : null), harvest: () => 'pumpkin',
-  yoyo: () => 'yoyo', bounce: () => 'ball', kick: (f) => (f < 2 ? 'football' : null), spintop: () => 'top', throwball: (f) => (f < 2 ? 'ball' : null),
+  yoyo: () => 'yoyo', bounce: () => 'ball', holdball: () => 'heldball', knit: () => 'knit', kick: (f) => (f < 2 ? 'football' : null), spintop: () => 'top', throwball: (f) => (f < 2 ? 'heldball' : null),
 };
 
-export const SIT_POSES = new Set(['sit', 'eat', 'watch', 'lutesit', 'laptop', 'sip', 'handheld', 'controller', 'band_drums']);
+// sitting at a café table: a child's shoulders are 2 px lower, so their hands are raised to match
+export const TABLE_POSES = new Set(['sip', 'laptop', 'handheld']);
+export const SIT_POSES = new Set(['knit', 'sit', 'eat', 'watch', 'lutesit', 'laptop', 'sip', 'handheld', 'controller', 'band_drums']);

@@ -1,9 +1,12 @@
 // Card: what each villager does next.
 import { H, HORIZON, S, W } from '../core/constants.js';
-import { mulberry32, pick, pickWeighted, rand } from '../core/math.js';
+import { mulberry32, pick, pickWeighted, rand, towardX } from '../core/math.js';
 import { AMPHI_SEATS, BARISTA, CAFE_SEATS, ENTRANCE, FIRE, HOUSES, LEAF_SPOTS, SNOWMAN_AT, STAGE_SPOT, STUMP, WELL, farmSpot } from '../world/layout.js';
-import { NAV, blocked, freeSpot, route } from '../world/nav.js';
+import { NAV, blocked, clearPath, freeSpot, route } from '../world/nav.js';
 import { SHRUBS } from '../art/foliage.js';
+
+// open grass for games of fetch and catch, with room to throw toward the middle of the village
+const PLAY_SPOTS = [[48, 104], [70, 116], [150, 114], [176, 104], [118, 120]];
 
 export const planMethods = {
   _plan(v) {
@@ -52,6 +55,12 @@ export const planMethods = {
       }
     }
     if (m !== 'away' && v.gear) return { x: door.x, y: door.y, action: 'unpack', dur: 0.8, done: () => { v.gear = false; } };
+    // the other kid called them over for a game, and games in progress carry on
+    if (job === 'child' && (m === 'work' || m === 'meal')) {
+      if (v.invite) { const p = v.invite; v.invite = null; v.windup = false; v.throwAt = -9; return p; }
+      if (v.tagLeft > 0 || v.chaseLeft > 0) return this._kidPlan(v, { chat, wander });
+    }
+    v.invite = null;
 
     switch (m) {
       case 'sleep': return home(rand(30, 60));
@@ -100,6 +109,7 @@ export const planMethods = {
         if (look && Math.random() < 0.3) return look;
       }
         if (job === 'child') return home(rand(30, 60));
+        if (job === 'elder' && r < 0.55) return { ...seat(), action: 'knit', dur: rand(14, 24) };
         if (job === 'bard') return Math.random() < 0.5 ? { ...STAGE_SPOT, face: 1, action: 'perform', dur: rand(12, 20) } : { ...seat(), action: 'play', dur: rand(10, 20) };
         if (r < 0.2 && this._villagers.some((o) => o.action === 'perform')) return { ...AMPHI_SEATS[v.id], action: 'sit', dur: rand(10, 18) };
         if (r < 0.6) return { ...seat(), action: 'sit', dur: rand(8, 16) };
@@ -109,6 +119,7 @@ export const planMethods = {
       case 'party': {
         if (job === 'bard') return { x: FIRE.x + 21, y: FIRE.y - 9, face: -1, action: 'play', dur: rand(10, 20) };
         if (job === 'cook' && r < 0.3) return cook();
+        if (job === 'elder' && r < 0.5) return { ...seat(), action: 'sit', dur: rand(8, 14) }; // watches from the bench
         v.ang += rand(0.5, 1.1);
         return {
           x: FIRE.x + Math.cos(v.ang) * 22, y: FIRE.y + 1 + Math.sin(v.ang) * 8,
@@ -126,7 +137,7 @@ export const planMethods = {
           if (look) return look;
         }
         if (job !== 'child' && job !== 'cook' && Math.random() < (job === 'bard' ? 0.3 : 0.15)) {
-          return cafe(Math.random() < 0.65 ? 'laptop' : 'sip', rand(10, 20));
+          return cafe(Math.random() < 0.65 && job !== 'elder' ? 'laptop' : 'sip', rand(10, 20));
         }
         switch (job) {
           case 'farmer':
@@ -141,6 +152,8 @@ export const planMethods = {
             if (r < 0.65) return { x: HOUSES[2].door.x + 6, y: HOUSES[2].base + 3, face: -1, action: 'sweep', dur: rand(6, 10) };
             if (r < 0.85 && this._season !== 'winter' && !this._landSnow) return { ...farmSpot(), face: pick([-1, 1]), action: 'farm', dur: rand(5, 8) };
             return chat();
+          case 'handyman': return this._handyPlan(v, { chat, wander });
+          case 'elder': return this._elderPlan(v, { chat, seat });
           case 'bard':
             if (r < 0.5) return { ...wander(), action: 'play', dur: rand(6, 12) };
             if (r < 0.8) return chat();
@@ -158,24 +171,141 @@ export const planMethods = {
     // a game of tag goes on for a few rounds
     if (v.tagLeft > 0 && v.dog && !v.dog.hidden && (!v.dog.play || v.dog.play.kid === v)) { v.tagLeft--; return this._tagPlan(v, wander, v.dog); }
     v.tagLeft = 0;
+    // chasing each other: a few rounds, and now and then the one being chased turns round and does the chasing
+    const mate = v.chaseWith;
+    if (v.chaseLeft > 0 && mate && this._canPlay(mate)) {
+      v.chaseLeft--;
+      if (v.chaseLeft > 0 && Math.random() < 0.35) {
+        mate.chaseLeft = v.chaseLeft; mate.chaseWith = v; mate.invite = null; mate.rethinkAt = this._t + 0.3;
+        v.chaseLeft = 0; v.chaseWith = null;
+        return { x: v.x, y: v.y, face: towardX(v.x, mate.x), action: 'play', dur: rand(1, 1.6) };
+      }
+      return this._chaseRound(v, mate, wander);
+    }
+    v.chaseLeft = 0; v.chaseWith = null;
+    const pal = this._playmate(v);
     const dog = this._freeDog(v);
     // drawn from the kid's own stream (like animation variants), so the shared Math.random sequence keeps its order
-    const kind = pickWeighted([['chat', 2], ['run', 2], ['yoyo', 3], ['bounce', 2], ['top', 1], ...(dog ? [['fetch', 2], ['tag', 1]] : [])], (v.vrng ||= mulberry32(Math.floor(v.seed * 4294967296))));
+    const kind = pickWeighted([['chat', 2], ['run', 2], ['yoyo', 3], ['bounce', 2], ['top', 1], ...(dog ? [['fetch', 2], ['tag', 1]] : []), ...(pal ? [['catch', 4], ['chase', 3]] : [])], (v.vrng ||= mulberry32(Math.floor(v.seed * 4294967296))));
     switch (kind) {
       case 'chat': return chat();
       case 'yoyo': return { ...wander(), action: 'yoyo', dur: rand(6, 12) };
       case 'bounce': return { ...wander(), action: 'bounce', dur: rand(5, 10) };
       case 'top': return { ...wander(), action: 'spintop', dur: rand(6, 10) };
-      case 'fetch': {
-        // open grass with room to throw toward the middle of the village
-        const [x, y] = pick([[48, 104], [70, 116], [150, 114], [176, 104], [118, 120]]);
-        const p = { x: x + rand(-3, 3), y: y + rand(-2, 2), face: x < W / 2 ? 1 : -1, action: 'playfetch', dur: rand(14, 24) };
-        dog.play = { kid: v, plan: p, kind: 'fetch', stage: 'join' }; v.dog = dog;
-        return p;
-      }
+      case 'fetch': return this._fetchPlan(v, dog);
       case 'tag': v.tagLeft = 2 + Math.floor(rand(0, 3)); return this._tagPlan(v, wander, dog);
+      case 'catch': return this._catchPlan(v, pal);
+      case 'chase': v.chaseLeft = 2 + Math.floor(rand(0, 4)); return this._chaseRound(v, pal, wander);
       default: return { ...wander(), action: 'play', dur: rand(2, 4), run: true };
     }
+  },
+
+  // Throwing a ball for a dog on open grass, toward the middle of the village.
+  _fetchPlan(v, dog) {
+    const [x, y] = pick(PLAY_SPOTS);
+    const p = { x: x + rand(-3, 3), y: y + rand(-2, 2), face: x < W / 2 ? 1 : -1, action: 'playfetch', dur: rand(14, 24) };
+    dog.play = { kid: v, plan: p, kind: 'fetch', stage: 'join' }; v.dog = dog;
+    return p;
+  },
+
+  // Calls another kid over to a game: they drop what they're doing and come.
+  _invite(o, plan) {
+    o.invite = plan; o.rethinkAt = this._t + rand(0.1, 0.4);
+  },
+
+  // A resident who can be called over: out and about, not already called, and it's a time for play.
+  _canPlay(o) {
+    return !o.inside && !o.gone && !o.guest && !o.invite && (this._mode === 'work' || this._mode === 'meal');
+  },
+
+  _playmate(v) {
+    return this._villagers.find((o) => o !== v && o.job === 'child' && this._canPlay(o) && !o.plan?.game && !(o.chaseLeft > 0)) || null;
+  },
+
+  // Catch: the two kids stand apart and throw a ball back and forth.
+  _catchPlan(v, o) {
+    // a spot with a clear line between the two of them (event tents come and go)
+    const spots = PLAY_SPOTS.map(([sx, sy]) => [sx + rand(-2, 2), sy + rand(-2, 2)]);
+    const [x, y] = spots.find(([sx, sy]) => !blocked(sx - 8, sy) && !blocked(sx + 8, sy) && clearPath(sx - 8, sy, sx + 8, sy)) || spots[0];
+    const dur = rand(16, 28);
+    const game = { kind: 'catch', kids: [v, o], holder: v, next: null, arriveAt: 0 };
+    this._invite(o, { x: x + 8, y, face: -1, action: 'catch', game, dur: dur + 1 });
+    return { x: x - 8, y, face: 1, action: 'catch', game, dur };
+  },
+
+  _catchFx(v) {
+    const g = v.plan?.game, o = g?.kids.find((k) => k !== v);
+    if (!o || o.plan?.game !== g || o.inside || o.gone) { v.fxT = 99; v.actT = Math.min(v.actT, 1); return; } // game's off
+    if (!o.walking) v.face = towardX(v.x, o.x);
+    if (g.next === v) { // the ball is on its way
+      if (this._t < g.arriveAt) { v.fxT = g.arriveAt - this._t + 0.01; return; }
+      g.next = null; g.holder = v;
+      if (Math.random() < 0.2) v.bubble = { g: 'heart', c: '#e04060', t: 1.2 };
+      else if (Math.random() < 0.15) v.jumpT = 0.4;
+      v.fxT = rand(0.8, 1.6);
+      return;
+    }
+    if (g.holder !== v || o.walking || o.action !== 'catch') { v.fxT = 0.4; return; }
+    if (!v.windup) {
+      if (!clearPath(v.x, v.y, o.x, o.y)) { v.actT = Math.min(v.actT, 1); v.fxT = 99; return; } // something's in the way: off to play elsewhere
+      v.windup = true; v.throwAt = this._t; v.fxT = 1; return;
+    }
+    v.windup = false; g.holder = null; g.next = o; v.fxT = 0.5; // keeps checking the game is still on
+    const sx = v.x + v.face * 3, sy = v.y - 9, tx = o.x + o.face * 2.5, ty = o.y - 6.5;
+    const tf = 0.45 + Math.hypot(tx - sx, ty - sy) / 45;
+    this._spawn({ x: sx, y: sy, vx: (tx - sx) / tf, vy: (ty - sy - 30 * tf * tf) / tf, life: tf, c: '#3a7ad8', ball: true, grav: true, layer: 1 });
+    g.arriveAt = this._t + tf; o.fxT = tf + 0.01;
+  },
+
+  // Chase: one kid dashes off, the other runs after them.
+  _chaseRound(v, o, wander) {
+    const p = { ...wander(), action: 'tag', dur: rand(1, 2), run: true };
+    v.chaseWith = o;
+    const side = p.x > o.x ? 1 : -1;
+    this._invite(o, { x: p.x - side * 5, y: p.y + rand(-1, 1), face: side, action: 'tag', dur: p.dur + 0.6, run: true });
+    return p;
+  },
+
+  /* ----- the handyman and the grandmother ----- */
+
+  _handyPlan(v, { chat, wander }) {
+    const r = Math.random();
+    if (r < 0.4) { // mending a fence beside someone's front path
+      const h = pick(HOUSES), side = pick([-1, 1]);
+      return { x: h.door.x + side * 9, y: h.base + 3, face: side, action: 'mend', dur: rand(6, 10) };
+    }
+    if (r < 0.58) return this._firewoodPlan(v);
+    if (r < 0.8) { // a game of fetch with his own dog
+      const dog = this._animals.find((a) => a.owner === v && !a.hidden && !a.play);
+      if (dog) return this._fetchPlan(v, dog);
+    }
+    if (r < 0.9) return chat();
+    return { ...wander(), action: 'idle', dur: rand(4, 8) };
+  },
+
+  _elderPlan(v, { chat, seat }) {
+    const r = Math.random();
+    if (r < 0.35) return { ...seat(), action: 'knit', dur: rand(14, 24) };
+    if (r < 0.55) { // scattering seed for the birds by the pond or on the square
+      const [x, y, face] = pick([[121, 118, -1], [FIRE.x + 12, FIRE.y + 7, 1]]);
+      return { x, y, face, action: 'feed', dur: rand(8, 14) };
+    }
+    if (r < 0.75) { // watering a window box
+      const h = pick(HOUSES), side = pick([-1, 1]);
+      return { x: h.door.x + side * 6, y: h.base + 3, face: side, action: 'tend', dur: rand(4, 7) };
+    }
+    return chat();
+  },
+
+  // Where a ball thrown by v can land in the open with a clear flight: facing first, then shorter, then the
+  // other way round (turning to face it). Null when nowhere is clear.
+  _throwTarget(v) {
+    for (const [dir, d] of [[v.face, rand(14, 22)], [v.face, 10], [-v.face, rand(12, 18)]]) {
+      const lx = Math.max(10, Math.min(W - 10, v.x + dir * d));
+      const [x, y] = freeSpot(lx, Math.max(HORIZON + 12, Math.min(H - 3, v.y + rand(-3, 3))));
+      if (Math.abs(x - v.x) > 6 && clearPath(v.x, v.y, x, y)) { v.face = dir; return [x, y]; }
+    }
+    return null;
   },
 
   _tagPlan(v, wander, dog) {
@@ -201,12 +331,15 @@ export const planMethods = {
     if (!pl || pl.kid !== v || pl.plan !== v.plan) { v.fxT = 99; v.actT = Math.min(v.actT, 1); return; } // lost the dog: move on
     if (!v.windup) {
       if (pl.stage !== 'ready') { v.fxT = 0.5; return; }
+      // somewhere open to throw to: no house or event tent in the way (shorter, then the other way)
+      const land = this._throwTarget(v);
+      if (!land) { v.fxT = 1.5; return; }
+      v.throwTo = land;
       v.windup = true; v.throwAt = this._t; dog.holding = false; v.fxT = 1;
       return;
     }
     v.windup = false; v.fxT = 99;
-    const lx = Math.max(10, Math.min(W - 10, v.x + v.face * rand(14, 22)));
-    const [x, y] = freeSpot(lx, Math.max(HORIZON + 12, Math.min(H - 3, v.y + rand(-3, 3))));
+    const [x, y] = v.throwTo;
     const tf = 0.7, sx = v.x + v.face * 3, sy = v.y - 9;
     this._spawn({ x: sx, y: sy, vx: (x - sx) / tf, vy: (y - 1 - sy - 30 * tf * tf) / tf, life: tf, c: '#3a7ad8', ball: true, grav: true, layer: 1 });
     pl.stage = 'chase';
@@ -234,6 +367,7 @@ export const planMethods = {
       return { x: d.x + 5, y: HOUSES[2].base + 3, face: -1, carry: 'pumpkins', drop: true, action: 'idle', dur: 1.5, done: () => { v.harvested = false; } };
     }
     if (this._landSnow) {
+      if (job === 'elder') return null; // no shovelling for her
       if (job === 'child') return this._snowman < 3 && r < 0.5 ? this._snowmanPlan(v) : r < 0.8 ? this._snowballPlan(v) : null;
       if (job === 'farmer') return r < 0.5 ? this._shovelPlan(v) : this._firewoodPlan(v); // nothing to farm under the snow
       return r < (job === 'cook' ? 0.25 : 0.4) ? this._shovelPlan(v) : null;
@@ -245,15 +379,15 @@ export const planMethods = {
           return { ...farmSpot(), face: pick([-1, 1]), action: 'harvest', dur: rand(4, 6), done: () => { v.harvested = true; } };
         }
         if (job === 'woodcutter') return r < 0.3 ? this._firewoodPlan(v) : null;
-        if (job === 'cook' || job === 'carrier' || job === 'bard' || job === 'farmer') return r < 0.3 ? this._rakePlan(v) : null;
+        if (job === 'cook' || job === 'carrier' || job === 'bard' || job === 'farmer' || job === 'handyman') return r < 0.3 ? this._rakePlan(v) : null;
         return null;
       case 'winter': // the garden is asleep: the farmer helps with the firewood
-        if (job === 'woodcutter') return r < 0.35 ? this._firewoodPlan(v) : null;
+        if (job === 'woodcutter' || job === 'handyman') return r < 0.35 ? this._firewoodPlan(v) : null;
         if (job === 'farmer') return r < 0.6 ? this._firewoodPlan(v) : chat();
         return null;
       case 'spring':
         if (job === 'farmer' && r < 0.4) return { ...farmSpot(), face: pick([-1, 1]), action: 'sow', dur: rand(5, 9) };
-        if ((job === 'cook' || job === 'bard') && L.key === 'spring-late' && r < 0.15) {
+        if ((job === 'cook' || job === 'bard' || job === 'elder') && L.key === 'spring-late' && r < 0.15) {
           // scattering wildflower seed along a front fence
           const h = pick(HOUSES), side = pick([-1, 1]);
           return { x: h.door.x + side * 8, y: h.base + 3, face: side, action: 'sow', dur: rand(4, 7) };

@@ -1,6 +1,6 @@
 // Assembles a villager sprite for a pose and frame (and riders on the bicycle).
 import { SHOE } from '../palette.js';
-import { ANIM, BASE_POSE, KEYS, POSE_TOOL, SIT_POSES } from './anim.js';
+import { ANIM, BASE_POSE, KEYS, POSE_TOOL, SIT_POSES, TABLE_POSES } from './anim.js';
 import { drawLegs, drawPack, drawSkirt, drawTorso, limb } from './body.js';
 import { AX, FY, SH, SW } from './frame.js';
 import { drawHead } from './head.js';
@@ -36,6 +36,7 @@ export function buildVillager(v, pose, frame, carry, gear) {
     bob = k.bob || 0; dir = k.dir;
   }
   if (child) { front = [front[0], Math.min(front[1], 5)]; back = [back[0], Math.min(back[1], 5)]; }
+  if (child && TABLE_POSES.has(pose)) { front = [front[0], front[1] - 2]; back = [back[0], back[1] - 2]; }
   const tb = (sit ? FY - 5 : FY - legLen) + bob;
   const tt = tb - torsoH + 1, hy = tt - 12;
   const sb = [AX - 3, tt + 2], sf = [AX + 3, tt + 2];
@@ -72,7 +73,7 @@ export function buildVillager(v, pose, frame, carry, gear) {
   drawLegs(g, legs, sit, child, legLen, pants, skin, v.job === 'band' ? '#f0f0f0' : SHOE.d);
   if (!sit && tb < FY - legLen) P(g, AX - 4, tb + 1, 9, FY - legLen - tb, pants.m);
   drawTorso(g, v, tt, tb, shirt, pants, skin);
-  if (v.job === 'carrier') drawSkirt(g, tb, pants, sit);
+  if (v.job === 'carrier' || L.skirt) drawSkirt(g, tb, pants, sit, L.skirt === 'long');
   if (L.outfit?.includes('smock') && !sit) { P(g, AX - 4, tb, 9, 2, shirt.m); P(g, AX - 4, tb, 1, 2, shirt.l); P(g, AX + 3, tb, 2, 2, shirt.d); P(g, AX - 4, tb + 1, 9, 1, shirt.d); }
 
   const eyes = drawHead(g, v, hy, skin, hair);
@@ -88,7 +89,7 @@ export function buildVillager(v, pose, frame, carry, gear) {
     line(g, hf[0] + 1, hf[1] - 9, hf[0] + 2, FY, '#9a6a3a', 2);
     P(g, hf[0], hf[1] - 11, 3, 3, '#6a4020');
   }
-  if (stick || (tool && !['popcorn', 'lute', 'bowl', 'spoon', 'mug', 'handheld0', 'handheld1', 'pad', 'balls', 'ball', 'football', 'top', ...INSTRUMENTS].includes(tool))) {
+  if (stick || (tool && !['popcorn', 'lute', 'bowl', 'spoon', 'mug', 'handheld0', 'handheld1', 'pad', 'balls', 'ball', 'football', 'heldball', 'top', 'knit', ...INSTRUMENTS].includes(tool))) {
     P(g, hf[0] - 1, hf[1] - 1, 3, 3, skin.m); P(g, hf[0] - 1, hf[1] - 1, 1, 1, skin.l);
   }
   outline(c);

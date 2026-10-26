@@ -16,6 +16,8 @@ export const animalMethods = {
       state: 'idle', t: rand(0, 3), seed: rnd(), hidden: false, ...extra,
     });
     for (let i = 0; i < 2; i++) add('dog', i, { owner: res[(i * 2) % res.length] });
+    const handy = res.find((v) => v.job === 'handyman');
+    if (handy) add('dog', 2, { owner: handy }); // his German Shepherd
     add('cat', 0, { spot: 0 });
     add('rabbit', 0, { zone: 0 }); add('rabbit', 1, { zone: 1 }); add('rabbit', 0, { zone: 2 });
     add('squirrel', 0, { tree: 1 }); add('squirrel', 0, { tree: 3 });
@@ -48,6 +50,7 @@ export const animalMethods = {
     const people = this._villagers.filter((v) => !v.inside && !v.gone);
     const near = (a, list, r) => list.find((o) => Math.hypot(o.x - a.x, o.y - a.y) < r);
     let dogs, threats; // built once a frame, when first needed
+    let feeder; // someone scattering seed (looked up once a frame, when a bird first asks)
     for (const a of this._animals) {
       a.anim = (a.anim || 0) + dt;
       if (a.play && (a.state === 'walk' || a.state === 'run') && this._playOver(a)) { a.path.length = 0; a.state = 'idle'; } // game over mid-dash
@@ -152,6 +155,15 @@ export const animalMethods = {
         case 'bird': {
           if (night || this._weather.rain || (this._season === 'winter' && a.flock >= 3)) { a.hidden = true; break; } // fewer birds in winter
           if (a.hidden) { a.hidden = false; a.state = 'perch'; this._placeAnimal(a); }
+          if (feeder === undefined) feeder = this._villagers.find((v) => v.action === 'feed' && !v.walking && !v.inside && !v.gone) || null;
+          if (feeder && a.lured !== feeder && a.state !== 'fly' && Math.random() < dt * 0.4) { // flutters down by her for the seed
+            const [x, y] = freeSpot(feeder.x + feeder.face * rand(7, 11), feeder.y + rand(-2, 2));
+            a.dist = Math.hypot(x - a.x, y - a.y) || 1; a.alt0 = a.alt || 0; a.alt1 = 0;
+            this._goAnimal(a, x, y, 30, 'fly', true);
+            a.rest = 'peck'; a.lured = feeder; a.t = rand(5, 10);
+            break;
+          }
+          if (a.lured && a.lured !== feeder) a.lured = null;
           const scared = near(a, people, 6);
           if (scared || a.t <= 0) {
             const sp = birdSpot();

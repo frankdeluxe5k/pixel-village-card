@@ -1,7 +1,7 @@
 // Card: building the village, time and mood.
 import { INSTRUMENTS } from '../content/band.js';
 import { EVENTS, eventOfMode } from '../content/events/index.js';
-import { JOBS, LOOKS } from '../content/jobs.js';
+import { DEFAULT_VILLAGERS, JOBS, LOOKS } from '../content/jobs.js';
 import { MODES, scheduleMode } from '../content/moods.js';
 import { H, HORIZON, RW, W } from '../core/constants.js';
 import { mulberry32, rand } from '../core/math.js';
@@ -13,7 +13,7 @@ import { freeSpot } from '../world/nav.js';
 
 export const worldMethods = {
   _initVillage() {
-    const n = Math.max(1, Math.min(10, Math.floor(Number(this._config.villagers)) || 6));
+    const n = Math.max(1, Math.min(10, Math.floor(Number(this._config.villagers)) || DEFAULT_VILLAGERS));
     const rnd = mulberry32(this._config.seed || 42);
     const p = (arr) => arr[Math.floor(rnd() * arr.length)];
     this._villagers = [];
@@ -24,15 +24,16 @@ export const worldMethods = {
         look: (() => {
           const variant = JOBS.slice(0, i).filter((j) => j === job).length % 2;
           const [shirt, pants] = LOOKS.outfit[job][variant];
-          return {
+          const look = {
             skin: p(LOOKS.skin), hair: p(LOOKS.hair), shirt, pants,
-            style: job === 'child' ? 'messy' : job === 'carrier' || rnd() < 0.3 ? 'long' : 'short',
+            style: job === 'child' ? (variant ? 'long' : 'messy') : job === 'carrier' || rnd() < 0.3 ? 'long' : 'short',
             beard: job === 'woodcutter' || (job === 'bard' && rnd() < 0.5),
           };
+          return { ...look, ...LOOKS.fixed[job] };
         })(),
         sprites: new Map(),
         small: job === 'child',
-        speed: job === 'child' ? 18 : rand(10, 13),
+        speed: job === 'child' ? 18 : job === 'elder' ? rand(7, 8) : rand(10, 13),
         seed: rnd(), x: 96, y: 80, tx: 96, ty: 80, face: 1,
         walking: false, action: 'idle', actT: 0, fxT: 0, rethinkAt: 0,
         inside: false, gone: false, slept: false, water: false, carry: null,

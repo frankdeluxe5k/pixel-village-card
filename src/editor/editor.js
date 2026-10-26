@@ -1,4 +1,5 @@
 // The visual editor (companion-village-card-editor).
+import { DEFAULT_VILLAGERS } from '../content/jobs.js';
 import { DEFAULT_SCHEDULE } from '../content/moods.js';
 import { DEFAULT_FPS } from '../core/constants.js';
 import { hourToTime, parseHour } from '../core/time.js';
@@ -59,7 +60,7 @@ export class CompanionVillageCardEditor extends HTMLElement {
     for (const k of ['visitors', 'animals', 'show_status', 'events']) if (c[k] === true) delete c[k];
     if (c.event_frequency === 'daily' || !c.event_frequency) delete c.event_frequency;
     if (Number(c.fps) === DEFAULT_FPS) delete c.fps;
-    if (Number(c.villagers) === 6) delete c.villagers;
+    if (Number(c.villagers) === DEFAULT_VILLAGERS) delete c.villagers;
     if (c.schedule) {
       const sch = {};
       for (const [k] of SCHEDULE_FIELDS) {
@@ -142,7 +143,7 @@ export class CompanionVillageCardEditor extends HTMLElement {
       { name: 'show_status', selector: { boolean: {} } },
       { name: 'fps', selector: { number: { min: 2, max: 30, step: 1, mode: 'box' } } },
     ], {
-      title: cfg.title ?? '', villagers: cfg.villagers ?? 6, visitors: cfg.visitors !== false, animals: cfg.animals !== false,
+      title: cfg.title ?? '', villagers: cfg.villagers ?? DEFAULT_VILLAGERS, visitors: cfg.visitors !== false, animals: cfg.animals !== false,
       events: cfg.events !== false, event_frequency: cfg.event_frequency ?? 'daily',
       show_status: cfg.show_status !== false, fps: cfg.fps ?? 15,
     }, (v) => { Object.assign(this._config, v); this._emit(); }));

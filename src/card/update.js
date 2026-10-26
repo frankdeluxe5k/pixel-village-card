@@ -110,7 +110,7 @@ export const updateMethods = {
         if (v.variant === 'farm_weed') this._spawn({ x: hx + v.face * 2, y: v.y - 3, vx: -v.face * rand(4, 10), vy: rand(-14, -8), life: 0.5, c: pick(['#4a8a2a', '#6aa83a']), grav: true, layer: 0 });
         else this._spawn({ x: hx + v.face * 2, y: v.y - 1, vx: rand(-6, 6), vy: rand(-14, -8), life: 0.4, c: '#5e3e24', grav: true, layer: 0 });
         break;
-      case 'water':
+      case 'water': case 'tend':
         v.fxT = 0.12;
         this._spawn({ x: hx + v.face, y: v.y - 3, vx: v.face * 4, vy: 4, life: 0.4, c: '#6ab0f0', grav: true, layer: 0 });
         break;
@@ -182,6 +182,15 @@ export const updateMethods = {
         if (Math.random() < 0.25) v.bubble = { g: 'star', c: '#e0a020', t: 1 };
         break;
       case 'playfetch': this._fetchFx(v); break;
+      case 'catch': this._catchFx(v); break;
+      case 'mend': // hammering a fence rail: little flecks of wood
+        v.fxT = 0.55;
+        this._spawn({ x: hx + v.face * 4, y: v.y - 4, vx: rand(-6, 6), vy: rand(-12, -6), life: 0.35, c: '#d8a868', grav: true, layer: 0 });
+        break;
+      case 'feed':
+        v.fxT = 0.6;
+        for (let i = 0; i < 3; i++) this._spawn({ x: hx + v.face * 3, y: v.y - 6, vx: v.face * rand(5, 12), vy: rand(-8, -2), life: 0.45, c: '#e8d090', grav: true, layer: 0 });
+        break;
       case 'tag':
         v.fxT = 99;
         if (Math.random() < 0.5) this._spawn({ x: v.x, y: v.y - 11, vx: 0, vy: -5, life: 1.2, g: 'heart', c: '#ff6080', layer: 1 });

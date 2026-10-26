@@ -223,7 +223,7 @@ export const renderMethods = {
     if (this._mode === 'party') this._drawPartyLights(ctx, dark);
     this._redrawInFrontOfLights(ctx, tint, dark, items, fixed);
     if ((this._mode === 'movie' || this._mode === 'gaming') && this._screen >= 1) this._drawFilm(ctx, dark);
-    if (this._mode === 'gaming' && dark) for (const v of this._villagers) if (!v.walking && v.action === 'handheld') this._glow(ctx, v.x * S + v.face * 6, v.y * S - 11, 8, '150,210,255', 0.45);
+    if (this._mode === 'gaming' && dark) for (const v of this._villagers) if (!v.walking && v.action === 'handheld') this._glow(ctx, v.x * S + v.face * 6, v.y * S - 14, 8, '150,210,255', 0.45);
     if (ph === 'night' && !w.rain && !w.snow) this._drawFireflies(ctx);
     this._drawParticles(ctx, 1);
     this._drawWeather(ctx, dark);
@@ -248,7 +248,7 @@ export const renderMethods = {
       const v = this._seated(i * 2 + side);
       if (!v) continue;
       const d = side ? 1 : -1; // which edge of the table this person sits at
-      P(ctx, tx + d * 2 - (d < 0 ? 2 : 0), ty - 12, 3, 3, '#ffffff'); P(ctx, tx + d * 2 - (d < 0 ? 2 : 0), ty - 12, 3, 1, '#6a3a1a');
+      if (v.action !== 'sip') { P(ctx, tx + d * 2 - (d < 0 ? 2 : 0), ty - 12, 3, 3, '#ffffff'); P(ctx, tx + d * 2 - (d < 0 ? 2 : 0), ty - 12, 3, 1, '#6a3a1a'); } // a sipper holds their own
       if (v.action === 'laptop') {
         const lx = tx + d * 6;
         P(ctx, lx - 3, ty - 11, 7, 1, '#9aa0aa');

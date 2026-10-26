@@ -6,6 +6,8 @@ export const COATS = {
   dog: [
     { c: '#a86a3a', d: '#7a4a28', l: '#c88a58', ear: '#5a3a20', belly: '#e8c8a0' },
     { c: '#f0eee8', d: '#c4c4c8', l: '#ffffff', ear: '#2a2a30', belly: '#ffffff', patch: '#2a2a30' },
+    // a German Shepherd: tan with a black saddle, black muzzle and tall pricked ears
+    { c: '#c88a48', d: '#8a5a2c', l: '#e0aa68', ear: '#2a2220', belly: '#e8c690', saddle: '#2e2622', prick: true },
   ],
   cat: [{ c: '#e88a3a', d: '#b85a20', l: '#f8b070' }],
   rabbit: [{ c: '#a88a6a', d: '#7a604a', l: '#c8aa8a' }, { c: '#e8e4dc', d: '#b8b0a8', l: '#ffffff' }],
@@ -30,11 +32,15 @@ export function animalSprite(type, variant, pose, frame, holding = false) {
       px(-6, -3, 12, 3, k.c); px(-6, -3, 12, 1, k.l); px(4, -4, 4, 3, k.c); px(5, -3, 3, 2, k.l);
       px(4, -4, 2, 3, k.ear); px(7, -3, 1, 1, OUT); px(-8, -1, 2, 1, k.c);
       if (k.patch) px(-2, -3, 3, 2, k.patch);
+      if (k.saddle) { px(-5, -3, 8, 1, k.saddle); px(-4, -2, 5, 1, k.saddle); px(6, -2, 2, 1, k.saddle); px(-8, -1, 2, 1, k.saddle); }
+      if (k.prick) { px(4, -6, 1, 2, k.ear); px(5, -7, 1, 3, k.ear); }
     } else if (pose === 'sit') {
       px(-4, -4, 5, 4, k.c); px(0, -7, 4, 6, k.c); px(0, -7, 1, 6, k.l); px(1, -2, 1, 2, k.d); px(3, -2, 1, 2, k.d);
       px(1, -11, 5, 4, k.c); px(5, -9, 2, 2, k.l); px(6, -9, 1, 1, OUT); px(3, -10, 1, 1, OUT); px(1, -11, 2, 3, k.ear);
       px(-6, -1, 3, 1, k.c);
       if (k.patch) px(-3, -4, 2, 2, k.patch);
+      if (k.saddle) { px(-4, -4, 4, 2, k.saddle); px(0, -7, 1, 3, k.saddle); px(5, -9, 2, 1, k.saddle); px(-6, -1, 2, 1, k.saddle); }
+      if (k.prick) { px(1, -13, 1, 2, k.ear); px(2, -14, 1, 3, k.ear); px(2, -11, 1, 1, k.ear); }
     } else {
       const run = pose === 'run', sw = [[0, 1], [1, 0], [0, -1], [-1, 0]][frame % 4];
       px(-5, -7, 10, 4, k.c); px(-5, -7, 10, 1, k.l); px(-4, -4, 8, 1, k.belly);
@@ -44,6 +50,12 @@ export function animalSprite(type, variant, pose, frame, holding = false) {
       const wag = frame % 2;
       px(-6 - wag, -9, 1, 3, k.c); px(-7 - wag, -10, 1, 1, k.c);
       if (k.patch) px(-2, -7, 3, 2, k.patch);
+      if (k.saddle) { // dark back and tail tip, black muzzle
+        const dy = run ? 1 : 0;
+        px(-4, -7, 7, 2, k.saddle); px(-5, -7, 1, 1, k.saddle); px(-7 - wag, -10, 1, 1, k.saddle);
+        px(8, -8 + dy, 2, 1, k.saddle);
+      }
+      if (k.prick) { const dy = run ? 1 : 0; px(4, -12 + dy, 1, 2, k.ear); px(5, -13 + dy, 1, 3, k.ear); }
     }
   } else if (type === 'cat') {
     if (pose === 'curl') {

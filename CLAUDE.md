@@ -211,12 +211,18 @@ things, plus a few one-time setup statements on its own data (house geometry, pa
   hitched on the east side, away from the pond), salesman (doors), artists (sculpture by the farm, on show
   until bedtime), landscapers (trim shrubs into tidy domes for the day, prune trees from a ladder), fair (tent,
   carousel, ring toss east of the pond, into the evening with lights). About one a day by default.
-- People: 6 residents by default (farmer, cook, woodcutter, water carrier, bard, kid), 8 visitors who come
+- People: 9 residents by default (`DEFAULT_VILLAGERS` in `content/jobs.js`: farmer, cook, woodcutter, water
+  carrier, bard, kid, handyman, grandmother (`elder`), a second kid; a tenth is a second farmer). Fixed looks
+  in `LOOKS.fixed`: the handyman has a shaved head (`HAIR.bald`, no hair at all), a full beard and a beaming smile, burgundy shirt and grey trousers, tool
+  belt, with a German Shepherd (dog coat 2: black `saddle`, `prick` ears); the grandmother has a grey `bun`,
+  glasses, a cardigan and a long skirt (`skirt: 'long'`) and walks slower. 8 visitors who come
   and go, a mail carrier on a red bicycle (letters or, randomly, parcels), a 4-piece band for parties:
   young garage-rock kids (drums, bass, two guitars; swoopy/spiky hair, tees, flannel, stripes, studded
   belts, white-soled sneakers) playing in front of the tavern, above the string lights over the square.
   Animals: 2 dogs (follow owners, nap at their door), a cat, birds (land only on open ground or roof ridges),
   rabbits, squirrels.
+- Café poses (`TABLE_POSES`: sip, laptop, handheld) keep the hands on the tabletop, since everyone there sits behind
+  a table; children's hands are raised 2 px to match.
 - Animation variants (`VARIANTS` in `art/villager/anim.js`): base pose → `[[pose, weight], …]`, default first,
   rarest last (dances: sway/jig/spin; kidplay: hop/twirl; chop: side swing/lean on the axe; farm: dig/weed by
   hand; sweep and rake; cook: season/taste; chat: wave/laugh; idle: shade the eyes/whistle; guitar and bass:
@@ -226,13 +232,21 @@ things, plus a few one-time setup statements on its own data (house geometry, pa
   the base. Keyframes may carry `legs` (`[backOff, backLift, frontOff, frontLift]`, as in the walk), `tool`
   (override, `null` = empty hands) and `turn` (draw the frame mirrored: a spin; `_mirrored(v)` is used for
   drawing, geometry and blinks).
+- Handyman (`_handyPlan`): mends fences (`mend` → hammer), firewood, fetch with his own dog, chat. Grandmother
+  (`_elderPlan`): knits at the fire seats (`knit`, a sitting pose; also most evenings), scatters seed
+  (`feed`; perched birds within reach fly down to peck near her, `a.lured`), waters window boxes (`tend`),
+  chats; she sits out parties on the bench and never shovels.
+- Two kids play together: `_playmate` + `_invite(o, plan)` (sets `o.invite` and a quick rethink; `_plan`
+  hands it out first in work/meal). Catch (`_catchPlan`/`_catchFx`, a shared `game` with `holder`/`next`,
+  poses `holdball`/`catchready`, a clear line between them or the game's off) and chase (`_chaseRound`,
+  `v.chaseLeft`, the chased one sometimes turns round and becomes the chaser).
 - The kid (`_kidPlan`, work and meal): chat, run about (`kidplay`), yo-yo, bounce a ball (or kick it),
   spinning top, fetch or tag with a dog (activity drawn from `v.vrng`). `_freeDog` borrows the nearest dog on
   show; `dog.play = { kid, plan, kind, stage }` takes over from following the owner until the kid's plan
   changes. Fetch: the dog joins, sits beside the kid (`ready`), the kid winds up and throws (`_fetchFx`, a
   `ball` particle), the dog runs to where it lands (`chase`), brings it back in its mouth and sits again. The
   ball is part of the dog's sprite (`animalSprite(…, holding)`, 2 px wider each side so it mirrors in place),
-  so the light redraw and depth masks include it. `_playOver` ends a game as soon as the kid moves on, even
+  so the light redraw and depth masks include it. Throws only go where `clearPath` is clear (`_throwTarget`). `_playOver` ends a game as soon as the kid moves on, even
   mid-dash, and a dog holding the ball drops it. Tag runs a few rounds (`v.tagLeft`), the dog at the kid's heels.
 
 ## Random events (read before adding one)

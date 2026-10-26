@@ -86,7 +86,7 @@ The editor writes plain YAML, so you can also write it yourself:
 ```yaml
 type: custom:companion-village-card
 title: Thornbrook
-villagers: 6
+villagers: 9
 weather_entity: weather.home
 schedule:
   wake: "06:30"
@@ -135,7 +135,7 @@ entries with `state:` to `state`, and everything else to `on`.
 |-----------|--------------|
 | `sleep`   | Everyone's in bed, windows dark, little z's float from the houses |
 | `morning` | Villagers come out stretching, the cook makes breakfast, smoke from chimneys |
-| `work`    | Farmer tends the field, woodcutter chops and hauls logs, water carrier runs to the well, bard busks, kid plays (toys, fetch with a dog) |
+| `work`    | Farmer tends the field, woodcutter chops and hauls logs, water carrier runs to the well, bard busks, the handyman mends fences, grandma knits and feeds the birds, the kids play (toys, catch and chase, fetch with a dog) |
 | `meal`    | Pot over the fire, everyone sits round eating (breakfast / lunch / dinner text depends on the hour) |
 | `evening` | Campfire, chatting, the bard plays, the kid goes to bed early |
 | `party`   | Big fire, string lights, dancing in a ring, and a travelling band |
@@ -185,10 +185,13 @@ Six houses along a cobbled main road and dirt paths, a fire square with benches 
 umbrella tables and a coffee cart, a rustic amphitheater, a pond, a farm at the back and a well behind
 the tavern.
 
-- **Residents:** a farmer, cook, woodcutter, water carrier, bard and a kid (more if you raise the count).
+- **Residents:** a farmer, cook, woodcutter, water carrier, bard, a handyman with his German Shepherd, a
+  grandmother and two kids (a tenth if you raise the count, fewer if you lower it).
   Nobody repeats one loop forever: dancers sway, jig or (now and then) spin, the woodcutter stops to lean on
-  the axe, the cook tastes the stew, people laugh and wave while they chat. The kid plays with a yo-yo, a
-  ball or a spinning top, and borrows a dog for a game of fetch or tag.
+  the axe, the cook tastes the stew, people laugh and wave while they chat. The kids play with a yo-yo, a
+  ball or a spinning top, play catch or chase each other, and borrow a dog for a game of fetch or tag.
+  The handyman mends fences and throws a stick for his dog; grandma knits by the fire, waters the window
+  boxes and scatters seed, and the birds come down to peck by her.
 - **Visitors** wander in by the east road or the west lane, sightsee, grab a coffee, sit by the fire and
   leave again. More turn up for evenings, movie nights and parties; nobody visits at night.
 - **The mail carrier** cycles in every few minutes during the day, parks at two or three houses and
@@ -235,7 +238,7 @@ The demo's Season menu previews each look.
 | option | default | notes |
 |---|---|---|
 | `title` | none | Card header |
-| `villagers` | `6` | Residents, 1–10 |
+| `villagers` | `9` | Residents, 1–10 |
 | `visitors` | `true` | Visitors, the mail carrier and the party band |
 | `animals` | `true` | Dogs, cat, birds, rabbits and squirrels |
 | `weather_entity` | first `weather.*` | Set `false` to turn weather off. Every Home Assistant condition is drawn: sun, clear night, clouds, wind, fog, rain, pouring rain, lightning, thunderstorms, hail, snow and sleet. Heavy rain, hail and storms send workers indoors |

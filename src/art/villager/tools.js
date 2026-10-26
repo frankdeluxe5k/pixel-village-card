@@ -106,16 +106,22 @@ export function drawTool(g, tool, hx, hy, frame, tt, tb) {
       for (const [x, y, c] of pts) { P(g, x, y, 2, 2, c); P(g, x, y, 1, 1, '#ffffff'); }
       break;
     }
+    case 'knit': { // two needles in the hands, the knitting hanging below, a ball of yarn in the lap
+      line(g, hx - 2, hy - 3, hx + 2, hy + 1, '#d8dce4', 1); line(g, hx + 2, hy - 3, hx - 1, hy + 1, '#c8ccd4', 1);
+      P(g, hx - 1, hy + 1, 4, 3, '#e05a6a'); P(g, hx - 1, hy + 2, 4, 1, '#c04050'); P(g, hx, hy + 4, 2, 1, '#e05a6a');
+      P(g, AX + 5, tb - 2, 3, 3, '#e05a6a'); P(g, AX + 5, tb - 2, 1, 1, '#ff8a9a'); P(g, AX + 6, tb - 1, 1, 1, '#c04050');
+      break;
+    }
     case 'yoyo': { // string down from the fingers to the spinning disc
       const d = Math.min([1, 4, 7, 3][frame] ?? 2, FY - 3 - hy); // never into the ground
       if (d > 1) P(g, hx + 1, hy + 1, 1, d - 1, '#f4f0e0');
       P(g, hx, hy + d, 3, 3, '#d83838'); P(g, hx, hy + d, 1, 1, '#ff8a7a'); P(g, hx + 1, hy + d + 1, 1, 1, frame % 2 ? '#ffd040' : '#8a1818');
       break;
     }
-    case 'ball': case 'football': { // bounced under the hand, or sitting at the toes before a kick
-      const x = tool === 'ball' ? hx : AX + 5 + frame * 2;
+    case 'ball': case 'football': case 'heldball': { // bounced under the hand, held at the chest, or at the toes before a kick
+      const x = tool === 'football' ? AX + 5 + frame * 2 : hx;
       const top = hy + 2, mid = Math.round((top + FY - 3) / 2); // in the hand, falling, on the ground, coming back up
-      const y = tool === 'ball' ? Math.min([top, mid, FY - 3, mid][frame] ?? FY - 3, FY - 3) : FY - 3;
+      const y = tool === 'heldball' ? hy : tool === 'ball' ? Math.min([top, mid, FY - 3, mid][frame] ?? FY - 3, FY - 3) : FY - 3;
       P(g, x, y, 3, 3, '#3a7ad8'); P(g, x, y, 1, 1, '#9ac4ff'); P(g, x + 1, y + 1, 2, 1, '#f0f0f0');
       break;
     }

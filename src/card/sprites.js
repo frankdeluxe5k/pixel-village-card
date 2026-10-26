@@ -58,13 +58,13 @@ export const spriteMethods = {
     }
     if (pose === 'walk' && v.pulling) pose = 'pull';
     else if (pose === 'walk' && v.pushing) pose = 'push';
-    if (act === 'playfetch') { // the throw plays once from its start, then the kid waits for the dog
+    if (act === 'playfetch' || act === 'catch') { // a throw plays once from its start, then they wait
       const since = this._t - (v.throwAt ?? -9);
       if (since < 2) {
         const [, rate, order] = ANIM.throwball, step = Math.min(order.length - 1, Math.floor(since * rate));
         return { pose: 'throwball', frame: order[step], step };
       }
-      pose = 'idle';
+      pose = act === 'playfetch' ? 'idle' : v.plan?.game?.holder === v ? 'holdball' : 'catchready';
     }
     if (VARIANTS[pose]) pose = this._variantOf(v, pose);
     const [keys, rate, order] = ANIM[pose];

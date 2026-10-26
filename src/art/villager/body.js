@@ -182,15 +182,37 @@ export function drawTorso(g, v, tt, tb, shirt, pants, skin) {
       P(g, x0, tt + 3, w, 1, shirt.h);
       belt = false;
       break;
+    case 'handyman': { // rolled sleeves, a leather tool belt with a pouch and a hammer loop
+      P(g, x0 + 3, tt, 3, 1, skin.d); P(g, x0 + 4, tt + 1, 1, 2, shirt.d);
+      const lb = ramp('#7a5030');
+      P(g, x0, tb - 1, w, 1, lb.d); P(g, x0 + 5, tb - 2, 3, 3, lb.m); P(g, x0 + 5, tb - 2, 3, 1, lb.l);
+      P(g, x0 + 1, tb - 1, 1, 2, '#9aa0aa');
+      belt = false;
+      break;
+    }
+    case 'elder': { // a cardigan over a pale blouse, buttons down the front
+      P(g, x0 + 3, tt, 3, 2, '#f4ece0'); P(g, x0 + 4, tt + 2, 1, h - 3, shirt.d);
+      for (let r = tt + 3; r < tb - 1; r += 2) P(g, x0 + 5, r, 1, 1, '#f0e0c0');
+      belt = false;
+      break;
+    }
     default:
       if (v.look.outfit) belt = drawOutfit(g, v.look, x0, tt, tb, w, h, shirt, skin);
   }
   if (belt) { P(g, x0, tb - 1, w, 1, '#3a2418'); P(g, x0 + 5, tb - 1, 2, 1, '#e0b040'); }
 }
 
-export function drawSkirt(g, tb, pants, sit) {
+export function drawSkirt(g, tb, pants, sit, long = false) {
   if (sit) {
     P(g, AX - 4, tb - 1, 12, 4, pants.m); P(g, AX - 4, tb - 1, 12, 1, pants.l); P(g, AX + 7, tb, 1, 3, pants.d);
+    if (long) { P(g, AX + 5, tb + 2, 3, FY - 2 - tb, pants.m); P(g, AX + 7, tb + 2, 1, FY - 2 - tb, pants.d); }
+    return;
+  }
+  if (long) { // down to the ankles
+    P(g, AX - 5, tb - 1, 11, 2, pants.m);
+    P(g, AX - 6, tb + 1, 13, FY - 2 - tb, pants.m); P(g, AX - 6, tb + 1, 1, FY - 2 - tb, pants.l);
+    for (const x of [AX - 3, AX + 1, AX + 4]) P(g, x, tb + 2, 1, FY - 4 - tb, pants.d);
+    P(g, AX - 6, FY - 2, 13, 1, pants.d);
     return;
   }
   P(g, AX - 5, tb - 1, 11, 2, pants.m);
