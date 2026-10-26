@@ -3,7 +3,8 @@ import { EVENTS, eventsForDay } from '../content/events/index.js';
 import { H, HORIZON, S, W } from '../core/constants.js';
 import { rand } from '../core/math.js';
 import { dayKey } from '../core/time.js';
-import { FIRE } from '../world/layout.js';
+import { FIRE, LEAF_SPOTS, SNOWMAN_AT } from '../world/layout.js';
+import { makeLeafPile, makeSnowman } from '../art/seasonal.js';
 import { EVENT_BLOCKS, blocked, clearPath, freeSpot, route, setEventBlocks } from '../world/nav.js';
 
 export const eventMethods = {
@@ -161,6 +162,7 @@ export const eventMethods = {
     const ev = this._event, out = [];
     if (ev?.E.blocks) out.push(...ev.E.blocks(this, ev));
     if (this._display && ev?.kind !== 'artists') out.push(...EVENTS.artists.blocks(this, null));
+    if (this._snowman > 0) out.push([SNOWMAN_AT.x - 2.5, SNOWMAN_AT.y - 1.5, SNOWMAN_AT.x + 2.5, SNOWMAN_AT.y + 0.6]);
     return out;
   },
 
@@ -185,6 +187,9 @@ export const eventMethods = {
     };
     if (ev?.E.props) ev.E.props(this, ev, add);
     if (this._display && ev?.kind !== 'artists') EVENTS.artists.props(this, null, add);
+    // seasonal: leaf piles (anyone at the same depth stands on or in front of them) and the snowman
+    if (!this._landSnow) this._piles.forEach((n, i) => { if (n) add(LEAF_SPOTS[i][0], LEAF_SPOTS[i][1], LEAF_SPOTS[i][1] - 0.6, this._eventArt(`pile${n}|${i}`, () => makeLeafPile(n, i))); });
+    if (this._snowman) add(SNOWMAN_AT.x, SNOWMAN_AT.y, SNOWMAN_AT.y, this._eventArt(`snowman${this._snowman}`, () => makeSnowman(this._snowman)));
   },
 
   _trimToday() {

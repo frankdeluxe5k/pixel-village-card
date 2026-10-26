@@ -3,40 +3,45 @@ import { paintBackdrop } from './backdrop.js';
 import { SHRUBS, makeTree, shrubProp } from './foliage.js';
 import { drawBench, drawHaystack, drawLamp, drawWell, drawWoodpile } from './props.js';
 import { drawAmphitheater, drawBackFarm, drawBackFence, drawCoffeeCart, drawMenuBoard, drawPatio, drawScarecrow, drawStool } from './venues.js';
-import { hexToRgb } from '../core/color.js';
+import { byLook, hexToRgb } from '../core/color.js';
 import { HZ, RH, RW, S } from '../core/constants.js';
 import { mulberry32, pick, rand } from '../core/math.js';
 import { bayer, hash2, vnoise } from '../core/noise.js';
 import { P, ellipse, line, mk, outline, tpl } from '../core/pixels.js';
-import { AMPHI, CART, FARM, FIRE, LAMPS, PATHS, PATIO, POND, STOOLS, STUMP, TABLES, WELL } from '../world/layout.js';
+import { AMPHI, CART, FARM, FIRE, HOUSES, LAMPS, PATHS, PATIO, POND, STOOLS, STUMP, TABLES, WELL } from '../world/layout.js';
+import { lookOf } from '../core/time.js';
 
 // The whole land layer at once (tests, tools). The card builds it in steps across frames instead.
-export function buildLand(snow, season = 'summer') {
-  const it = buildLandSteps(snow, season);
+export function buildLand(snow, look = 'summer') {
+  const it = buildLandSteps(snow, look);
   let r;
   while (!(r = it.next()).done);
   return r.value;
 }
 
 // Builds the land layer, yielding between stages so a slow device never freezes for long.
-export function* buildLandSteps(snow, season = 'summer') {
+export function* buildLandSteps(snow, look = 'summer') {
+  const L = lookOf(look), season = L.season;
   const c = mk(RW, RH), g = c.getContext('2d');
   const im = g.createImageData(RW, RH), d = im.data;
   const kind = new Uint8Array(RW * RH);
   const set = (x, y, col) => { const i = (y * RW + x) * 4; d[i] = col[0]; d[i + 1] = col[1]; d[i + 2] = col[2]; d[i + 3] = 255; };
   const C = (arr) => arr.map(hexToRgb);
 
-  yield* paintBackdrop(set, snow, season);
+  yield* paintBackdrop(set, snow, L.key);
 
   // ground: grass, cobbled street, flagstone square, pond and farm soil
   const pale = (arr) => (snow ? arr.map((c) => c.map((v) => v + (255 - v) * 0.3)) : arr);
-  // Grass: green through summer, golden in fall, dry and tawny in a snowless winter
-  const grass = C(snow ? ['#bccbe0', '#d4e0ee', '#e8f0f8', '#ffffff']
-    : season === 'fall' ? ['#56783a', '#709040', '#8ea64c', '#acb85e']
-      : season === 'winter' ? ['#6a6a44', '#84804e', '#9e9460', '#b8aa74'] : ['#468434', '#5a9e40', '#70b44c', '#88c85c']);
+  // Grass: greening up through spring, lush in summer, golden in fall, dry and tawny in a snowless winter
+  const grass = C(snow ? ['#bccbe0', '#d4e0ee', '#e8f0f8', '#ffffff'] : byLook(L, {
+    'spring-early': ['#5a6e38', '#708440', '#889a4c', '#a2ae5c'], 'spring-late': ['#448a34', '#58a440', '#70bc4c', '#8cd05e'],
+    'fall-early': ['#56783a', '#709040', '#8ea64c', '#acb85e'], 'fall-late': ['#6a6c3c', '#868446', '#a29a56', '#bcb06a'],
+    winter: ['#6a6a44', '#84804e', '#9e9460', '#b8aa74'],
+  }, ['#468434', '#5a9e40', '#70b44c', '#88c85c']));
+  const frozen = snow || season === 'winter'; // the pond ices over by midwinter
   const dirt = C(snow ? ['#9a948e', '#b4aea6', '#ccc6be', '#e0dcd6'] : ['#86603c', '#a87e50', '#c49a64', '#d8b47c']);
   const soil = C(snow ? ['#8a8490', '#a8a2ac', '#c4c0c8', '#e4e4ec'] : ['#4e3020', '#6a4228', '#845634', '#9a6a42']);
-  const water = C(snow ? ['#9ab8d0', '#b8d0e4', '#d4e6f4', '#ffffff'] : ['#24527e', '#2f6a9e', '#4a8cc4', '#9ad4f4']);
+  const water = C(snow ? ['#9ab8d0', '#b8d0e4', '#d4e6f4', '#ffffff'] : frozen ? ['#6a8ca8', '#86a6be', '#a8c2d6', '#d8e6f0'] : ['#24527e', '#2f6a9e', '#4a8cc4', '#9ad4f4']);
   const cob = [
     pale(C(['#7e7468', '#948a7c', '#a69c8c', '#bab0a0'])),
     pale(C(['#86786a', '#9c8e7c', '#ae9f8a', '#c2b49e'])),
@@ -156,7 +161,7 @@ export function* buildLandSteps(snow, season = 'summer') {
   g.putImageData(im, 0, 0);
   yield;
   const K = (x, y) => kind[(y | 0) * RW + (x | 0)];
-  const hexG = snow ? ['#b8c8dc', '#ffffff'] : season === 'winter' ? ['#5a5a3a', '#c8b884'] : season === 'fall' ? ['#4a6a2e', '#c0c470'] : ['#3a7a2c', '#9ad86a'];
+  const hexG = snow ? ['#b8c8dc', '#ffffff'] : byLook(L, { winter: ['#5a5a3a', '#c8b884'], 'fall-late': ['#5a5a32', '#c8b878'], fall: ['#4a6a2e', '#c0c470'], 'spring-early': ['#4a6230', '#a8b46a'] }, ['#3a7a2c', '#9ad86a']);
 
   // tufts, wildflower patches, mushrooms, pebbles
   const R2 = mulberry32(9);
@@ -165,19 +170,75 @@ export function* buildLandSteps(snow, season = 'summer') {
     if (K(x, y) !== 2 || K(x + 4, y) !== 2 || K(x, y + 3) !== 2) continue;
     tpl(g, ['.l..l', 'lml.l', 'mmlml'], x, y, { l: hexG[1], m: hexG[0] });
   }
-  if (!snow && season !== 'winter') {
-    for (let p = 0; p < (season === 'fall' ? 7 : 14); p++) {
-      const px = 10 + R2() * (RW - 20), py = HZ + 10 + R2() * (RH - HZ - 14), col = pick(['#f05a6a', '#f8e060', '#ffffff', '#c890f8', '#f8a040']);
-      for (let i = 0; i < 7; i++) {
-        const x = Math.round(px + rand(-9, 9)), y = Math.round(py + rand(-4, 4));
+  if (!snow && L.bloom) {
+    // pasque flowers as the snow melts; columbine, paintbrush and lupine in late spring; a summer mix; asters in fall
+    const flowerCols = byLook(L, {
+      'spring-early': ['#b890e8', '#9a70d0', '#d0b0f0'], 'spring-late': ['#7a90f0', '#e84a3a', '#9060d8', '#ffffff', '#f8e060', '#f05a6a'],
+      fall: ['#a080e0', '#c8a0f0', '#f8e060'],
+    }, ['#f05a6a', '#f8e060', '#ffffff', '#c890f8', '#f8a040']);
+    const R5 = mulberry32(19);
+    for (let p = 0; p < [0, 7, 14, 24][L.bloom]; p++) {
+      const px = 10 + R5() * (RW - 20), py = HZ + 10 + R5() * (RH - HZ - 14), col = flowerCols[Math.floor(R5() * flowerCols.length)];
+      for (let i = 0; i < (L.bloom === 3 ? 9 : 7); i++) {
+        const x = Math.round(px + (R5() - 0.5) * 18), y = Math.round(py + (R5() - 0.5) * 8);
         if (K(x, y) !== 2 || K(x, y + 3) !== 2) continue;
-        P(g, x, y + 2, 1, 2, '#3a7a2c'); P(g, x - 1, y, 3, 1, col); P(g, x, y - 1, 1, 3, col); P(g, x, y, 1, 1, '#f8d030');
+        P(g, x, y + 2, 1, 2, hexG[0]);
+        if (L.melt) { P(g, x - 1, y, 1, 2, col); P(g, x + 1, y, 1, 2, col); P(g, x, y, 1, 1, '#f8d030'); continue; } // low cups
+        P(g, x - 1, y, 3, 1, col); P(g, x, y - 1, 1, 3, col); P(g, x, y, 1, 1, '#f8d030');
       }
     }
+  }
+  if (!snow && (L.key === 'summer' || L.key === 'fall-early')) {
     for (let i = 0; i < 9; i++) {
       const x = Math.floor(R2() * RW), y = HZ + 8 + Math.floor(R2() * (RH - HZ - 10));
       if (K(x, y) !== 2 || K(x + 4, y + 3) !== 2) continue;
       P(g, x + 1, y + 2, 2, 2, '#f0e8d8'); P(g, x, y, 4, 2, '#d83a2a'); P(g, x + 1, y - 1, 2, 1, '#d83a2a'); P(g, x + 1, y, 1, 1, '#ffffff');
+    }
+  }
+  if (!snow && L.leaves) {
+    // fallen leaves: thick under the aspens and oaks, blown a little east, drifted along the path edges
+    const R4 = mulberry32(41), gold = ['#f4c838', '#d8a020', '#e8b830', '#a86a14'], rust = ['#c0501c', '#a8481c', '#8a3a18', '#d0702a'];
+    const brown = L.leaves > 1 ? ['#8a6a3a', '#a07a40', '#6e5430', '#b89050'] : gold;
+    const onGround = (x, y) => { const k = K(x, y); return k === 2 || k === 3 || k === 5 || k === 6; };
+    const drop = (cx, cy, rx, ry, n, cols) => {
+      for (let i = 0; i < n; i++) {
+        const a = R4() * Math.PI * 2, d = Math.sqrt(R4()), x = Math.round(cx + Math.cos(a) * d * rx), y = Math.round(cy + Math.sin(a) * d * ry);
+        if (x < 0 || x >= RW - 1 || y < HZ + 2 || y >= RH || !onGround(x, y)) continue;
+        P(g, x, y, R4() < 0.35 ? 2 : 1, 1, cols[Math.floor(R4() * cols.length)]);
+      }
+    };
+    for (const [x, y] of [[160, 70], [88, 64], [197, 71]]) drop(x * S + 10, y * S + 3, 42, 11, 150 * L.leaves, gold);
+    for (const [kind, bx, by, br] of SHRUBS) if (kind === 'gambel' || kind === 'rose') drop(bx + 4, by + 2, br * 4, 6, 45 * L.leaves, rust);
+    // drifts: patchy, thicker in late fall, gathered along path edges
+    const thr = L.leaves > 1 ? 0.5 : 0.62, all = [...gold, ...rust, ...brown];
+    yield;
+    for (let y = HZ + 3; y < RH; y++) {
+      if ((y - HZ) % 50 === 0) yield; // a few slices, so a slow tablet never stalls
+      for (let x = 0; x < RW - 1; x++) {
+        if (K(x, y) !== 2) continue;
+        const edge = K(x, y + 2) === 3 || K(x, y - 2) === 3 || K(x + 2, y) === 3 || K(x - 2, y) === 3 || K(x, y + 2) === 5 || K(x, y - 2) === 5;
+        const p = (vnoise(x * 0.035, y * 0.09, 77) - thr) * 0.6 + (edge ? 0.12 * L.leaves : 0);
+        if (hash2(x, y, 78) < p) P(g, x, y, 1, 1, all[Math.floor(hash2(y, x, 79) * all.length)]);
+      }
+    }
+  }
+  if (!snow && L.melt) {
+    // early spring: old snow lingering in shady spots, puddles of meltwater on the dirt paths
+    const R6 = mulberry32(53);
+    const patch = (cx, cy, rx, ry) => {
+      for (let y = -ry; y <= ry; y++) for (let x = -rx; x <= rx; x++) {
+        const d = (x / rx) ** 2 + (y / ry) ** 2 + (hash2(cx + x, cy + y, 54) - 0.5) * 0.5;
+        if (d > 1 || !onGrass(cx + x, cy + y)) continue;
+        P(g, cx + x, cy + y, 1, 1, d > 0.75 ? '#b8c4d4' : y < 0 ? '#f0f4fa' : '#d8e0ec');
+      }
+    };
+    const onGrass = (x, y) => K(x, y) === 2;
+    for (const h of HOUSES) patch(Math.round(h.x * S + (R6() - 0.5) * 30), Math.round(h.base * S - 4), 10 + Math.floor(R6() * 6), 2);
+    for (let i = 0; i < 6; i++) patch(Math.floor(R6() * RW), HZ + 3 + Math.floor(R6() * 8), 8 + Math.floor(R6() * 8), 2);
+    for (let i = 0; i < 40; i++) {
+      const x = Math.floor(R6() * (RW - 8)), y = HZ + 6 + Math.floor(R6() * (RH - HZ - 8));
+      if (K(x, y) !== 3 || K(x + 6, y) !== 3 || K(x, y + 2) !== 3) continue;
+      ellipse(g, x + 3, y + 1, 3, 1, '#5a4a3a'); P(g, x + 1, y, 3, 1, '#8aa4bc'); P(g, x + 2, y + 1, 2, 1, '#6a84a0');
     }
   }
   for (let i = 0; i < 110; i++) {
@@ -186,19 +247,21 @@ export function* buildLandSteps(snow, season = 'summer') {
     P(g, x, y, 3, 2, '#8a8478'); P(g, x, y, 2, 1, '#c8c0b0'); P(g, x + 1, y + 2, 3, 1, '#5a5040');
   }
 
-  // pond: lily pads, cattails, shore rocks (frozen in winter)
-  if (snow) {
-    for (let i = 0; i < 5; i++) P(g, POND.x - 14 + i * 6, POND.y - 3 + (i % 3) * 2, 5, 1, '#ffffff');
-  } else {
+  // pond: lily pads from late spring to early fall, cattails, shore rocks; frozen in winter
+  if (frozen) {
+    for (let i = 0; i < 5; i++) P(g, POND.x - 14 + i * 6, POND.y - 3 + (i % 3) * 2, 5, 1, snow ? '#ffffff' : '#eef4fa');
+    if (!snow) for (const [lx, ly, n] of [[-12, 1, 7], [2, -2, 5], [6, 3, 6]]) line(g, POND.x + lx, POND.y + ly, POND.x + lx + n, POND.y + ly - 1, '#5a7c98', 1); // cracks
+  } else if (L.key === 'spring-late' || L.key === 'summer' || L.key === 'fall-early') {
     for (const [lx, ly, fl] of [[-10, -1, true], [-3, 3, false], [8, -2, false], [12, 2, true]]) {
       ellipse(g, POND.x + lx, POND.y + ly, 3, 1, '#3a9a3a'); P(g, POND.x + lx - 2, POND.y + ly - 1, 2, 1, '#6aca5a'); P(g, POND.x + lx + 1, POND.y + ly, 2, 1, '#2a6a2a');
-      if (fl) { P(g, POND.x + lx, POND.y + ly - 2, 2, 2, '#f8a0c0'); P(g, POND.x + lx, POND.y + ly - 2, 1, 1, '#ffffff'); }
+      if (fl && L.key !== 'fall-early') { P(g, POND.x + lx, POND.y + ly - 2, 2, 2, '#f8a0c0'); P(g, POND.x + lx, POND.y + ly - 2, 1, 1, '#ffffff'); }
     }
   }
   for (const [rx, h] of [[-22, 10], [-20, 7], [-18, 12], [19, 9], [21, 13], [23, 8]]) {
     const x = POND.x + rx, y = POND.y + 2;
-    P(g, x, y - h, 1, h, snow ? '#8a9a8a' : '#4a8a30');
-    if (h > 9) { P(g, x, y - h - 1, 2, 4, snow ? '#e0e8f0' : '#6a4020'); P(g, x, y - h + 3, 1, 2, '#4a8a30'); }
+    const reed = snow ? '#8a9a8a' : L.key === 'spring-late' || L.key === 'summer' ? '#4a8a30' : L.key === 'fall-early' ? '#7a8a3a' : '#a08a5a';
+    P(g, x, y - h, 1, h, reed);
+    if (h > 9) { P(g, x, y - h - 1, 2, 4, snow ? '#e0e8f0' : L.melt ? '#c8b8a0' : '#6a4020'); P(g, x, y - h + 3, 1, 2, reed); }
   }
   for (const [rx, ry] of [[-17, 6], [15, 7], [-6, 9], [5, -9]]) {
     const x = POND.x + rx, y = POND.y + ry;
@@ -224,14 +287,14 @@ export function* buildLandSteps(snow, season = 'summer') {
     for (let deg = AMPHI.a0 + 2; deg <= AMPHI.a1 - 2; deg += 9) {
       const t = (deg * Math.PI) / 180, x = Math.round(AMPHI.x + back * Math.cos(t)), y = Math.round(AMPHI.y + back * AMPHI.squash * Math.sin(t));
       if (snow) { P(g, x - 2, y - 1, 5, 2, '#ffffff'); continue; }
-      tpl(g, ['g..g.g', '.gGgG.', 'gGGGGg'], x - 3, y - 3, { g: hexG[0], G: season === 'winter' ? '#8a7a50' : '#5aa840' });
-      if (season === 'winter') continue;
+      tpl(g, ['g..g.g', '.gGgG.', 'gGGGGg'], x - 3, y - 3, { g: hexG[0], G: season === 'winter' || L.leaves > 1 ? '#8a7a50' : L.melt ? '#7a8a48' : '#5aa840' });
+      if (!L.bloom) continue;
       const col = ['#f05a7a', '#f8e060', '#c890f8', '#ffffff'][Math.floor(R3() * 4)];
       if (R3() < 0.7) { P(g, x - 1, y - 5, 1, 1, col); P(g, x + 2, y - 4, 1, 1, col); P(g, x, y - 6, 1, 1, '#f8d030'); }
     }
   }
 
-  if (season !== 'winter' || snow) drawBackFarm(g, snow);
+  if (season !== 'winter' || snow) drawBackFarm(g, snow, L.key);
 
   yield;
   // Trees and props are separate sprites, sorted by depth with everything that moves.
@@ -242,7 +305,7 @@ export function* buildLandSteps(snow, season = 'summer') {
     props.push({ cv: pc, x: bx, y: by, sortY });
   };
   const tree = (kind, x, y, r, seed) => {
-    const t = makeTree(kind, r, seed, snow, season), X = x * S, Y = y * S;
+    const t = makeTree(kind, r, seed, snow, L.key), X = x * S, Y = y * S;
     ellipse(g, X, Y, Math.round(t.r * 0.7), 3, 'rgba(16,40,20,0.3)');
     props.push({ cv: t.cv, x: X - t.ax, y: Y - t.ay, sortY: y });
   };
@@ -261,7 +324,7 @@ export function* buildLandSteps(snow, season = 'summer') {
   for (const [bx, by, bw] of [[FX - 18, FPY - 20, 36], [FX - 70, FPY + 21, 20], [FX + 50, FPY + 23, 20]]) prop(bx - 2, by - 12, bw + 4, 14, by / S, (pg) => drawBench(pg, bx, by, bw, snow));
   for (const [lx, ly] of LAMPS) prop(lx - 6, ly - 46, 12, 48, ly / S, (pg) => drawLamp(pg, lx, ly));
   SHRUBS.forEach((sh, i) => {
-    const pr = shrubProp(sh, snow, season, false);
+    const pr = shrubProp(sh, snow, L.key, false);
     pr.shrub = i; // landscapers swap in a trimmed copy per card (see _staticItems)
     props.push(pr);
   });

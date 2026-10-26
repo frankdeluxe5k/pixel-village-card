@@ -24,11 +24,12 @@ export const renderMethods = {
 
   _buildBg() {
     const w = this._weather, ph = this._phase;
-    if (this._landSnowWant !== w.snow || this._landSeason !== this._season || !this._landKey) {
-      const landKey = `${w.snow ? 'snow' : 'green'}|${this._season}`;
+    const look = this._look?.key || 'summer';
+    if (this._landSnowWant !== w.snow || this._landSeason !== look || !this._landKey) {
+      const landKey = `${w.snow ? 'snow' : 'green'}|${look}`;
       // built a few ms per frame; until it's ready the previous land (or just the sky) stays up
-      const L = sharedLand(w.snow, this._season, this._land ? 6 : 12);
-      if (L) { this._useLand(L, landKey, w.snow); this._landSnowWant = w.snow; this._landSeason = this._season; }
+      const L = sharedLand(w.snow, look, this._land ? 6 : 12);
+      if (L) { this._useLand(L, landKey, w.snow); this._landSnowWant = w.snow; this._landSeason = look; }
     }
     // the sky only depends on the time of day and the cloud cover
     if (this._bgPhase === ph && this._bgOver === w.overcast && this._bgKey) return;
@@ -94,10 +95,18 @@ export const renderMethods = {
   // Houses, props, tables and the stage never move: build their depth entries once and keep them sorted.
   // `o` keeps the original draw order for equal depths.
   _staticItems(snow) {
-    if (this._static && this._staticSnow === snow) return this._static;
+    const decor = this._decor || 'bloom';
+    if (this._static && this._staticSnow === snow && this._staticDecor === decor) return this._static;
     const ctx = this._ctx, a = this._art();
     const stage = (sharedArt.stages[snow ? 1 : 0] ||= makeStage(snow));
-    const houses = (sharedArt.houses[snow ? 1 : 0] ||= HOUSES.map((h) => makeHouse(h, snow)));
+    // the last two house sets stay cached (green and snowy for today's decorations)
+    const hk = `${snow ? 1 : 0}|${decor}`;
+    if (!sharedArt.houses[hk]) {
+      const keys = Object.keys(sharedArt.houses);
+      if (keys.length >= 2) delete sharedArt.houses[keys[0]];
+      sharedArt.houses[hk] = HOUSES.map((h) => makeHouse(h, snow, decor));
+    }
+    const houses = sharedArt.houses[hk];
     // g() gives each item's sprite and where it lands, so the light redraw can tell who is in front of whom
     const stageG = [stage.cv, stage.x, stage.y, false];
     const items = [{ y: 112.5, o: 2000, d: () => { ctx.drawImage(stage.cv, stage.x, stage.y); this._drawScreen(ctx); }, g: () => stageG }];
@@ -111,18 +120,18 @@ export const renderMethods = {
       items.push({ y: pr.sortY, o: 6000 + i, lit, d: () => ctx.drawImage(cv(), pr.x, pr.y), g: () => { g[0] = cv(); return g; } });
     });
     TABLES.forEach(([tx, ty], i) => {
-      const spr = this._art().tables[i], g = [spr.cv, tx - spr.ax, ty - spr.by, false];
+      const spr = this._table(i), g = [spr.cv, tx - spr.ax, ty - spr.by, false];
       items.push({ y: (ty + 3) / S, o: 7000 + i, d: () => this._drawTable(ctx, i, tx, ty), g: () => g });
     });
     items.sort(byDepth);
-    this._staticSnow = snow;
+    this._staticSnow = snow; this._staticDecor = decor;
     return (this._static = items);
   },
 
   // A landscaped copy of a shrub, per card and season (the shared land props never change).
   _trimmedShrub(i) {
-    const key = `shrub${i}|${this._season}`;
-    return this._eventArt(key, () => shrubProp(SHRUBS[i], false, this._season, true)).cv;
+    const look = this._look?.key || 'summer', key = `shrub${i}|${look}`;
+    return this._eventArt(key, () => shrubProp(SHRUBS[i], false, look, true)).cv;
   },
 
   _render() {
@@ -225,8 +234,15 @@ export const renderMethods = {
     return this._seats?.get(i);
   },
 
+  // Café table sprite; the umbrellas stay furled from December until May.
+  _table(i) {
+    const a = this._art();
+    if (this._decor !== 'winter' && this._decor !== 'bare') return a.tables[i];
+    return (a.tablesClosed ||= TABLES.map(([, , c]) => makeCafeTable(c, true)))[i];
+  },
+
   _drawTable(ctx, i, tx, ty) {
-    const spr = this._art().tables[i];
+    const spr = this._table(i);
     ctx.drawImage(spr.cv, tx - spr.ax, ty - spr.by);
     for (const side of [0, 1]) {
       const v = this._seated(i * 2 + side);

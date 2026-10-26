@@ -148,7 +148,7 @@ export const animalMethods = {
           break;
         }
         case 'bird': {
-          if (night || this._weather.rain) { a.hidden = true; break; }
+          if (night || this._weather.rain || (this._season === 'winter' && a.flock >= 3)) { a.hidden = true; break; } // fewer birds in winter
           if (a.hidden) { a.hidden = false; a.state = 'perch'; this._placeAnimal(a); }
           const scared = near(a, people, 6);
           if (scared || a.t <= 0) {

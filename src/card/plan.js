@@ -1,8 +1,9 @@
 // Card: what each villager does next.
-import { W } from '../core/constants.js';
+import { HORIZON, S, W } from '../core/constants.js';
 import { pick, rand } from '../core/math.js';
-import { AMPHI_SEATS, BARISTA, CAFE_SEATS, ENTRANCE, FIRE, HOUSES, STAGE_SPOT, STUMP, WELL, farmSpot } from '../world/layout.js';
+import { AMPHI_SEATS, BARISTA, CAFE_SEATS, ENTRANCE, FIRE, HOUSES, LEAF_SPOTS, SNOWMAN_AT, STAGE_SPOT, STUMP, WELL, farmSpot } from '../world/layout.js';
 import { NAV, blocked, freeSpot, route } from '../world/nav.js';
+import { SHRUBS } from '../art/foliage.js';
 
 export const planMethods = {
   _plan(v) {
@@ -81,6 +82,8 @@ export const planMethods = {
         return { x: W + 12, y: ENTRANCE[1] + rand(-1, 1), gone: true, action: 'gone', dur: 60 };
       }
       case 'morning':
+        // after a snowfall the first job is clearing the paths
+        if (this._landSnow && job !== 'cook' && job !== 'child' && r < 0.4) return this._shovelPlan(v);
         if (job === 'cook') return cook();
         if (job === 'carrier') return this._carrierPlan(v);
         if (r < 0.3) return cafe('sip', rand(8, 14));
@@ -114,6 +117,10 @@ export const planMethods = {
       }
       default: // work
         if (this._weather.heavy || (this._weather.rain && r < 0.35)) return home(rand(15, 30));
+        {
+          const chore = this._seasonChore(v, { chat });
+          if (chore) return chore;
+        }
         if (job !== 'cook' && Math.random() < (job === 'child' ? 0.35 : 0.12)) {
           const look = this._eventVisit(v);
           if (look) return look;
@@ -132,7 +139,7 @@ export const planMethods = {
           case 'cook':
             if (r < 0.4) return { ...BARISTA, face: -1, action: 'serve', dur: rand(8, 14) };
             if (r < 0.65) return { x: HOUSES[2].door.x + 6, y: HOUSES[2].base + 3, face: -1, action: 'sweep', dur: rand(6, 10) };
-            if (r < 0.85) return { ...farmSpot(), face: pick([-1, 1]), action: 'farm', dur: rand(5, 8) };
+            if (r < 0.85 && this._season !== 'winter' && !this._landSnow) return { ...farmSpot(), face: pick([-1, 1]), action: 'farm', dur: rand(5, 8) };
             return chat();
           case 'bard':
             if (r < 0.5) return { ...wander(), action: 'play', dur: rand(6, 12) };
@@ -147,10 +154,112 @@ export const planMethods = {
 
   _carrierPlan(v) {
     if (!v.water) return { x: WELL.x + 7, y: WELL.y, face: -1, action: 'fetch', dur: 3, done: () => { v.water = true; } };
-    const dest = Math.random() < 0.6
+    // the garden needs the most water in late spring and summer, none once it's put to bed for the winter
+    const L = this._look, toFarm = this._season === 'winter' || L?.melt ? 0 : L?.key === 'summer' || L?.key === 'spring-late' ? 0.75 : 0.5;
+    const dest = Math.random() < toFarm
       ? farmSpot()
       : { x: FIRE.x - 7, y: FIRE.y + 3 };
     return { ...dest, face: pick([-1, 1]), carry: 'bucket', action: 'water', dur: 2.5, done: () => { v.water = false; } };
+  },
+
+  /* ----- seasonal chores ----- */
+
+  // A seasonal job for a resident during the work day, or null for the usual routine.
+  _seasonChore(v, { chat }) {
+    const L = this._look, job = v.job, r = Math.random();
+    if (!L) return null;
+    if (v.harvested) { // bring the crate of pumpkins down to the tavern
+      const d = HOUSES[2].door;
+      return { x: d.x + 5, y: HOUSES[2].base + 3, face: -1, carry: 'pumpkins', drop: true, action: 'idle', dur: 1.5, done: () => { v.harvested = false; } };
+    }
+    if (this._landSnow) {
+      if (job === 'child') return this._snowman < 3 && r < 0.5 ? this._snowmanPlan(v) : r < 0.8 ? this._snowballPlan(v) : null;
+      if (job === 'farmer') return r < 0.5 ? this._shovelPlan(v) : this._firewoodPlan(v); // nothing to farm under the snow
+      return r < (job === 'cook' ? 0.25 : 0.4) ? this._shovelPlan(v) : null;
+    }
+    switch (L.season) {
+      case 'fall':
+        if (job === 'child') return r < 0.45 ? this._leapPlan(v) : null;
+        if (job === 'farmer' && L.key === 'fall-early' && r < 0.5) {
+          return { ...farmSpot(), face: pick([-1, 1]), action: 'harvest', dur: rand(4, 6), done: () => { v.harvested = true; } };
+        }
+        if (job === 'woodcutter') return r < 0.3 ? this._firewoodPlan(v) : null;
+        if (job === 'cook' || job === 'carrier' || job === 'bard' || job === 'farmer') return r < 0.3 ? this._rakePlan(v) : null;
+        return null;
+      case 'winter': // the garden is asleep: the farmer helps with the firewood
+        if (job === 'woodcutter') return r < 0.35 ? this._firewoodPlan(v) : null;
+        if (job === 'farmer') return r < 0.6 ? this._firewoodPlan(v) : chat();
+        return null;
+      case 'spring':
+        if (job === 'farmer' && r < 0.4) return { ...farmSpot(), face: pick([-1, 1]), action: 'sow', dur: rand(5, 9) };
+        if ((job === 'cook' || job === 'bard') && L.key === 'spring-late' && r < 0.15) {
+          // scattering wildflower seed along a front fence
+          const h = pick(HOUSES), side = pick([-1, 1]);
+          return { x: h.door.x + side * 8, y: h.base + 3, face: side, action: 'sow', dur: rand(4, 7) };
+        }
+        return null;
+    }
+    return null;
+  },
+
+  _shovelPlan(v) {
+    const h = HOUSES[v.home ?? 2] || HOUSES[2];
+    return { x: h.door.x + rand(-3, 3), y: h.base + rand(3.5, 5), face: pick([-1, 1]), action: 'shovel', dur: rand(6, 11) };
+  },
+
+  _firewoodPlan(v) {
+    const h = pick(HOUSES);
+    return { x: h.door.x + 5, y: h.base + 3, face: -1, carry: 'log', drop: true, action: 'idle', dur: 1.5 };
+  },
+
+  _rakePlan(v) {
+    const piles = this._piles, i = Math.floor(Math.random() * LEAF_SPOTS.length), [px, py] = LEAF_SPOTS[i], side = pick([-1, 1]);
+    return { x: px + side * 6, y: py + rand(-0.5, 0.5), face: -side, action: 'rake', pile: i, dur: rand(6, 10), done: () => { piles[i] = Math.min(3, piles[i] + 1); } };
+  },
+
+  _leapPlan(v) {
+    const piles = this._piles, full = piles.map((n, i) => i).filter((i) => piles[i] >= 2);
+    if (!full.length) return null;
+    const i = pick(full), [px, py] = LEAF_SPOTS[i];
+    return { x: px + rand(-0.5, 0.5), y: py + 0.3, face: pick([-1, 1]), action: 'leap', pile: i, run: true, dur: rand(2, 3), done: () => { piles[i] = Math.max(0, piles[i] - 1); } };
+  },
+
+  _snowmanPlan(v) {
+    const side = this._snowman >= 1 ? pick([-1, 1]) : -1;
+    return { x: SNOWMAN_AT.x + side * 5, y: SNOWMAN_AT.y + 0.4, face: -side, action: 'snowman', dur: rand(5, 8), done: () => { this._snowman = Math.min(3, this._snowman + 1); this._melt = 0; } };
+  },
+
+  _snowballPlan(v) {
+    const others = this._villagers.filter((o) => o !== v && !o.inside && !o.gone && !o.walking && !o.guest && o.y > HORIZON + 10);
+    if (!others.length) return null;
+    const o = others.find((x) => x.job === 'child') || pick(others), side = o.x > W - 20 ? -1 : o.x < 20 ? 1 : pick([-1, 1]);
+    const [x, y] = freeSpot(o.x + side * 13, o.y + rand(-1, 1));
+    return { x, y, face: -side, action: 'throw', target: o, dur: rand(3, 5) };
+  },
+
+  // Leaf piles and the snowman between plans: piles go once fall is over, the snowman melts without snow.
+  _tickSeason(dt) {
+    for (let i = this._hits.length - 1; i >= 0; i--) { // snowballs landing
+      const { o, t } = this._hits[i];
+      if (this._t < t) continue;
+      this._hits.splice(i, 1);
+      if (o.inside || o.gone) continue;
+      o.bubble = { g: 'bang', c: '#3a6ad0', t: 0.8 };
+      for (let k = 0; k < 4; k++) this._spawn({ x: o.x, y: o.y - 6, vx: rand(-10, 10), vy: rand(-14, -4), life: 0.4, c: '#ffffff', grav: true, layer: 1 });
+    }
+    if (this._season !== 'fall' && this._piles.some((n) => n)) this._piles.fill(0);
+    if (this._snowman > 0 && !this._landSnow && (this._melt += dt) > 40) { this._melt = 0; this._snowman--; }
+  },
+
+  // Leaves drifting down from the aspens and oaks in fall.
+  _fallingLeaves(dt) {
+    const L = this._look;
+    if (L?.season !== 'fall' || this._landSnow || this._weather.heavy) return;
+    const rate = (L.leaves > 1 ? 0.9 : 0.5) * (this._weather.wind ? 2.5 : 1);
+    if (Math.random() > rate * dt || this._leafCount >= 8) return;
+    const src = Math.random() < 0.7 ? pick([[160, 70, 12], [88, 64, 10], [197, 71, 10]]) : (() => { const sh = pick(SHRUBS.filter(([k]) => k === 'gambel')); return [sh[1] / S, sh[2] / S, 4]; })();
+    const [tx, ty, hgt] = src, fallH = rand(3, hgt), vy = rand(2.5, 4);
+    this._spawn({ x: tx + rand(-4, 4), y: ty - fallH, vx: rand(0.5, 2) * (this._weather.wind ? 3 : 1), vy, life: fallH / vy, c: pick(['#f4c838', '#d8a020', '#c0501c', '#e8b830']), layer: 0, leaf: true });
   },
 
   _think(v) {

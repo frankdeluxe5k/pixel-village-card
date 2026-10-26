@@ -6,6 +6,7 @@ import { mulberry32 } from '../core/math.js';
 import { bayer, hash2 } from '../core/noise.js';
 import { P, disc, ellipse, line, mk, outline, tpl } from '../core/pixels.js';
 import { AMPHI, CART, FARM, PATIO, SCREEN_Q, stairY } from '../world/layout.js';
+import { lookOf } from '../core/time.js';
 
 /* ---------- amphitheater ---------- */
 
@@ -113,16 +114,35 @@ export function makeStage(snow) {
   return { cv: c, x: ox, y: oy };
 }
 
-export function drawBackFarm(g, snow, season) {
+// Furrows in early spring, seedlings in late spring, a full garden in summer, corn and pumpkins ready to
+// harvest in early fall, stubble and corn shocks after the harvest.
+export function drawBackFarm(g, snow, look) {
+  const L = lookOf(look);
   const CAB = ['.ggg.', 'gGHGg', 'gGGGd', '.ddd.'];
   const CAR = ['H.H', '.g.', '.o.'];
+  const PUMP = ['.s.', 'oOo', 'dod'];
+  const SHOCK = ['..y..', '.yYy.', '.yYy.', 'yyYyd', 'yYYyd', 'dd.dd'];
   for (let k = 0; k < 5; k++) {
     const yb = FARM.y0 + 6 * k + 3;
+    if (!snow && (L.melt || L.key === 'spring-late' || L.leaves > 1)) { P(g, FARM.x0 + 2, yb, FARM.x1 - FARM.x0 - 5, 1, '#3a2216'); P(g, FARM.x0 + 2, yb - 1, FARM.x1 - FARM.x0 - 5, 1, '#9a6a42'); }
     for (let cx = FARM.x0 + 4 + (k % 2) * 4; cx < FARM.x1 - 3; cx += 8) {
       if (snow) { P(g, cx - 2, yb - 1, 4, 1, '#ffffff'); continue; }
+      if (L.melt) continue; // freshly turned furrows
+      if (L.key === 'spring-late') { tpl(g, ['g.g', '.G.'], cx - 1, yb - 2, { g: '#7ac850', G: '#3a8a30' }); continue; }
+      if (L.leaves > 1) {
+        if (k === 0 && (cx - FARM.x0) % 16 < 8) tpl(g, SHOCK, cx - 2, yb - 6, { y: '#d8b860', Y: '#b8944a', d: '#7a5a30' });
+        else { P(g, cx - 1, yb - 2, 1, 2, '#c8a860'); P(g, cx + 1, yb - 1, 1, 1, '#a88a50'); }
+        continue;
+      }
       if (k === 0) {
+        if (L.key === 'fall-early') { // drying corn with ears
+          P(g, cx, yb - 11, 1, 11, '#b8a050'); P(g, cx + 1, yb - 7, 2, 1, '#c8b060'); P(g, cx - 2, yb - 9, 2, 1, '#9a8a40'); P(g, cx + 1, yb - 6, 1, 2, '#e8c860');
+          continue;
+        }
         P(g, cx, yb - 9, 1, 9, '#3a8a30'); P(g, cx + 1, yb - 5, 2, 1, '#5aaa40');
         P(g, cx - 1, yb - 12, 3, 3, '#f8c830'); P(g, cx, yb - 11, 1, 1, '#7a4a20'); P(g, cx - 2, yb - 11, 1, 1, '#f8c830'); P(g, cx + 2, yb - 11, 1, 1, '#f8c830');
+      } else if (L.key === 'fall-early' && k % 2) {
+        P(g, cx - 3, yb, 7, 1, '#4a6a28'); tpl(g, PUMP, cx - 1, yb - 2, { s: '#3a5a20', o: '#e07a28', O: '#f8a040', d: '#a84a18' });
       } else if (k % 2) tpl(g, CAB, cx - 2, yb - 3, { G: '#5cb040', H: '#b0e878', g: '#3a8030', d: '#265a24' });
       else tpl(g, CAR, cx - 1, yb - 2, { H: '#8ad860', g: '#3a8a30', o: '#e07a28' });
     }
@@ -214,11 +234,20 @@ export function drawStool(g, x, y) {
   line(g, x - 2, y - 3, x - 3, y, '#3a3a46'); line(g, x + 2, y - 3, x + 3, y, '#3a3a46');
 }
 
-// Bistro table under a striped umbrella; drawn in front of the people sitting at it.
-export function makeCafeTable(color) {
+// Bistro table under a striped umbrella (furled through the cold months); drawn in front of the people
+// sitting at it.
+export function makeCafeTable(color, closed = false) {
   const c = mk(42, 52), g = c.getContext('2d'), ax = 21, by = 49, st = ramp(color);
   P(g, ax - 1, by - 42, 2, 34, '#8a8e98'); P(g, ax - 1, by - 42, 1, 34, '#c8ccd4');
-  for (let r = 0; r < 8; r++) {
+  if (closed) {
+    // the canopy folded down around the pole and tied
+    for (let r = 0; r < 16; r++) {
+      const half = r < 2 ? 1 : r < 13 ? 2 : 1;
+      for (let x = -half; x <= half; x++) P(g, ax + x, by - 47 + r, 1, 1, (r + x) % 4 === 0 ? '#fbf6ee' : x > 0 ? st.d : x < 0 ? st.l : st.m);
+    }
+    P(g, ax - 2, by - 38, 5, 1, '#5a4a3a');
+  }
+  for (let r = 0; r < (closed ? 0 : 8); r++) {
     const half = 6 + Math.round(r * 1.9);
     for (let x = -half; x <= half; x++) {
       const seg = Math.floor(((x / half) + 1) * 3) % 2;
@@ -226,7 +255,7 @@ export function makeCafeTable(color) {
       P(g, ax + x, by - 46 + r, 1, 1, seg ? (shade === 'd' ? '#d8d0c4' : '#fbf6ee') : st[shade]);
     }
   }
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < (closed ? 0 : 6); i++) {
     const sx = ax - 18 + i * 6 + 3, col = i % 2 ? '#fbf6ee' : st.m;
     P(g, sx - 3, by - 38, 6, 1, col); P(g, sx - 2, by - 37, 4, 1, col);
   }

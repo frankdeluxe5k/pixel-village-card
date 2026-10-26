@@ -5,10 +5,10 @@ import { JOBS, LOOKS } from '../content/jobs.js';
 import { MODES, scheduleMode } from '../content/moods.js';
 import { H, HORIZON, RW, W } from '../core/constants.js';
 import { mulberry32, rand } from '../core/math.js';
-import { seasonOf } from '../core/time.js';
+import { decorOf, lookOf, seasonLook } from '../core/time.js';
 import { activatedAt, evalReactions, reactionKind } from '../ha/reactions.js';
 import { autoWeather, isLive, readWeather } from '../ha/weather.js';
-import { FIRE, HOUSES } from '../world/layout.js';
+import { FIRE, HOUSES, LEAF_SPOTS } from '../world/layout.js';
 import { freeSpot } from '../world/nav.js';
 
 export const worldMethods = {
@@ -48,6 +48,7 @@ export const worldMethods = {
     this._nextGuest = 0;
     this._initAnimals(g);
     this._particles = [];
+    this._piles = LEAF_SPOTS.map(() => 0); this._snowman = 0; this._melt = 0; this._leafCount = 0; this._hits = [];
     this._screen = 0;
     this._popcorn = false;
     this._sign = 0; // 2 = the BACK SOON sign hangs on the amphitheater screen
@@ -148,7 +149,10 @@ export const worldMethods = {
     }
     this._weather = readWeather(this.previewWeather ?? (wEnt ? states[wEnt]?.state : ''));
     this._phase = this._phaseFor(h);
-    this._season = this.previewSeason || seasonOf(this._now(), this._hass?.config?.latitude < 0);
+    const south = this._hass?.config?.latitude < 0, now = this._now();
+    this._look = this.previewSeason ? lookOf(this.previewSeason) : seasonLook(now, south);
+    this._season = this._look.season;
+    this._decor = decorOf(this._look, now, south);
     this._hourNow = h;
 
     if (mode !== this._mode) {

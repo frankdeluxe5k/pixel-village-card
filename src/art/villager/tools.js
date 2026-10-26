@@ -13,7 +13,9 @@ export function drawHafted(g, kind, [hx, hy], [dx, dy]) {
   line(g, Math.round(hx - dx * 4), Math.round(hy - dy * 4), Math.round(tx), Math.round(ty), WOOD.m, 2);
   line(g, Math.round(hx - dx * 4), Math.round(hy - dy * 4), Math.round(tx - dx), Math.round(ty - dy), WOOD.l, 1);
   const at = (a, b) => [Math.round(tx + dx * a + px * b), Math.round(ty + dy * a + py * b)];
-  if (kind === 'hoe') {
+  if (kind === 'shovel') { // a flat square blade
+    for (let a = 0; a <= 4; a++) for (let b = -2; b <= 2; b++) { const [x, y] = at(a, b); P(g, x, y, 1, 1, b === -2 ? METAL.h : b === 2 ? METAL.d : METAL.m); }
+  } else if (kind === 'hoe') {
     for (let k = 0; k < 5; k++) { const [x, y] = at(0, k); P(g, x, y, 2, 2, k === 4 ? METAL.h : METAL.m); }
   } else if (kind === 'axe') {
     for (let a = -3; a <= 0; a++) for (let b = -1; b <= 4; b++) { const [x, y] = at(a, b); P(g, x, y, 1, 1, b === 4 ? METAL.h : b < 0 ? METAL.d : METAL.m); }
@@ -71,6 +73,17 @@ export function drawTool(g, tool, hx, hy, frame, tt, tb) {
       line(g, hx - 3, hy - 7, hx + 5, FY - 4, WOOD.m, 2);
       for (let i = 0; i < 4; i++) P(g, hx + 3 - i + (frame % 2), FY - 3 + i, 6 + 2 * i, 1, i % 2 ? '#c8a050' : '#e0c070');
       break;
+    case 'rake': // long handle down to a toothed head on the ground
+      line(g, hx - 3, hy - 7, hx + 6, FY - 2, WOOD.m, 2); line(g, hx - 3, hy - 7, hx + 5, FY - 2, WOOD.l, 1);
+      P(g, hx + 3 + (frame % 2), FY - 2, 7, 1, METAL.m);
+      for (let i = 0; i < 4; i++) P(g, hx + 3 + (frame % 2) + i * 2, FY - 1, 1, 2, METAL.d);
+      break;
+    case 'snowball':
+      P(g, hx - 1, hy - 2, 3, 3, '#f4f8ff'); P(g, hx + 1, hy, 1, 1, '#c4d4e8');
+      break;
+    case 'pumpkin':
+      P(g, hx - 2, hy, 6, 4, '#e07a28'); P(g, hx - 2, hy, 6, 1, '#f8a040'); P(g, hx, hy, 1, 4, '#b85a18'); P(g, hx, hy - 2, 1, 2, '#4a6a28');
+      break;
     case 'bucket':
       line(g, hx - 2, hy + 1, hx, hy - 1, '#5a5a66', 1); line(g, hx, hy - 1, hx + 4, hy + 1, '#5a5a66', 1);
       P(g, hx - 2, hy + 1, 7, 6, METAL.m); P(g, hx - 2, hy + 1, 2, 6, METAL.l); P(g, hx + 3, hy + 1, 2, 6, METAL.d);
@@ -115,6 +128,10 @@ export function drawCarry(g, carry, hx, hy, tt) {
     const cr = ramp('#b08048');
     P(g, AX + 2, tt + 1, 10, 7, cr.m); P(g, AX + 2, tt + 1, 10, 1, cr.l); P(g, AX + 2, tt + 4, 10, 1, cr.d); P(g, AX + 11, tt + 1, 1, 7, cr.d);
     P(g, AX + 4, tt, 2, 1, '#e04848'); P(g, AX + 7, tt, 2, 1, '#f0c030');
+  } else if (carry === 'pumpkins') {
+    const cr = ramp('#b08048');
+    P(g, AX + 2, tt + 2, 10, 6, cr.m); P(g, AX + 2, tt + 2, 10, 1, cr.l); P(g, AX + 11, tt + 2, 1, 6, cr.d);
+    for (const x of [AX + 2, AX + 7]) { P(g, x, tt - 1, 5, 4, '#e07a28'); P(g, x, tt - 1, 5, 1, '#f8a040'); P(g, x + 2, tt - 2, 1, 1, '#4a6a28'); }
   } else if (carry === 'case') {
     const cs = ramp('#6a3a22');
     P(g, hx - 3, hy, 7, 5, cs.m); P(g, hx - 3, hy, 7, 1, cs.l); P(g, hx + 3, hy, 1, 5, cs.d); P(g, hx - 1, hy - 1, 3, 1, cs.o); P(g, hx, hy + 2, 1, 1, '#e8c050');

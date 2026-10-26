@@ -4,6 +4,7 @@ import { S } from '../core/constants.js';
 import { mulberry32 } from '../core/math.js';
 import { bayer, hash2 } from '../core/noise.js';
 import { P, line, mk, outline } from '../core/pixels.js';
+import { lookOf } from '../core/time.js';
 
 export const FOLIAGE = {
   spruce: ['#1c3436', '#2a4c52', '#3c6668', '#57847f', '#88b0a8'],
@@ -12,11 +13,13 @@ export const FOLIAGE = {
     spring: ['#2e5a24', '#44802e', '#62a23c', '#88c450', '#bce47c'],
     summer: ['#24502a', '#346e32', '#4e8e3c', '#70ae4c', '#9ccc66'],
     fall: ['#6a3c0c', '#a86a14', '#d8a020', '#f4c838', '#fff08a'],
+    turning: ['#3e5016', '#6a7a1c', '#a0a428', '#d0c438', '#f0e47a'],
   },
   gambel: {
     spring: ['#26461e', '#386628', '#548a34', '#76aa46', '#a0cc66'],
     summer: ['#22401e', '#325c28', '#4a7a34', '#66984a', '#8cb866'],
     fall: ['#4a1e10', '#7a3016', '#a8481c', '#d0702a', '#eca450'],
+    dry: ['#3a2214', '#5a3418', '#7a4a22', '#9a6430', '#b8844a'],
   },
   juniper: ['#1a3430', '#28463e', '#3a5e52', '#527a6a', '#7c9c8c'],
   sage: ['#566052', '#727c6a', '#909a86', '#b0b8a6', '#ced4c4'],
@@ -120,16 +123,19 @@ export function drawPonderosa(size, seed, snow) {
   return { cv: c, ax: cx, ay: by, r: R };
 }
 
-// A small grove of quaking aspens: white trunks with dark eyes, round fluttery leaves.
-export function drawAspens(size, seed, snow, season) {
+// A small grove of quaking aspens: white trunks with dark eyes, round fluttery leaves. In early fall some
+// groves are still turning, by late fall only a few gold leaves cling on, in early spring there are catkins.
+export function drawAspens(size, seed, snow, look) {
+  const L = lookOf(look), season = L.season;
   const R = size * S, rnd = mulberry32(seed), n = size >= 5 ? 3 : 2;
   const w = Math.round(R * 2.6) + 10, h = Math.round(R * 3.4) + 8, by = h - 2, base = w >> 1;
-  const c = mk(w, h), g = c.getContext('2d'), pal = FOLIAGE.aspen[season === 'winter' ? 'summer' : season];
+  const c = mk(w, h), g = c.getContext('2d');
+  const pal = L.key === 'fall-early' && seed % 3 === 0 ? FOLIAGE.aspen.turning : FOLIAGE.aspen[season === 'winter' ? 'summer' : L.key === 'spring-late' ? 'spring' : season];
   const trunks = Array.from({ length: n }, (_, i) => ({
     x: Math.round(base + (i - (n - 1) / 2) * R * 0.7 + (rnd() - 0.5) * 3),
     top: Math.round(R * (0.55 + rnd() * 0.5)), lean: (rnd() - 0.5) * 0.08,
   }));
-  const clusters = [];
+  const clusters = [], keep = Math.round(18 * (1 - L.bare));
   for (const t of trunks) {
     for (let y = t.top; y <= by; y++) {
       const x = Math.round(t.x + (by - y) * t.lean);
@@ -140,29 +146,30 @@ export function drawAspens(size, seed, snow, season) {
       const x = Math.round(t.x + (by - y) * t.lean);
       if (hash2(x, y, seed + 3) < 0.6) { P(g, x - 1, y, 2, 1, '#2a2a28'); P(g, x, y + 1, 1, 1, '#4a4a46'); }
     }
-    if (season === 'winter') {
-      for (let k = 0; k < 6; k++) {
-        const y0 = t.top + 2 + k * 3, side = k % 2 ? 1 : -1;
-        line(g, t.x, y0 + 4, t.x + side * (4 + (k % 3) * 2), y0, '#9a948a', 1);
-      }
-      continue;
-    }
     const cy = t.top + R * 0.7;
+    if (L.bare >= 0.5) {
+      // bare twigs fanning up from the trunk
+      for (let k = 0; k < 6; k++) {
+        const y0 = t.top + 2 + k * 3, side = k % 2 ? 1 : -1, ex = t.x + side * (4 + (k % 3) * 2);
+        line(g, t.x, y0 + 4, ex, y0, '#9a948a', 1);
+        if (L.melt) P(g, ex, y0 - 1, 1, 2, k % 2 ? '#c8ccb0' : '#a8b490'); // catkins
+      }
+    }
     for (let k = 0; k < 18; k++) {
-      const a = rnd() * Math.PI * 2, dd = Math.sqrt(rnd());
-      clusters.push({ x: t.x + Math.cos(a) * dd * R * 0.5, y: cy + Math.sin(a) * dd * R * 1.05, r: 2 + rnd() * 2.5 });
+      const a = rnd() * Math.PI * 2, dd = Math.sqrt(rnd()), r = 2 + rnd() * 2.5;
+      if (k < keep) clusters.push({ x: t.x + Math.cos(a) * dd * R * 0.5, y: cy + Math.sin(a) * dd * R * 1.05, r: L.bare >= 0.5 ? r * 0.6 : r });
     }
   }
   if (clusters.length) g.drawImage(paintClusters(w, h, clusters, pal, { seed, noise: 0.6, spiky: 0.22, snow, gx: base, gy: R, gr: R }), 0, 0);
-  if (season === 'fall' && !snow) for (let k = 0; k < 6; k++) P(g, Math.round(base + (rnd() - 0.5) * R * 2), by - Math.round(rnd() * 3), 1, 1, '#f4c838');
-  outline(c, season === 'fall' ? '#3a2008' : '#10261a');
+  if (L.leaves && !snow) for (let k = 0; k < 6 * L.leaves; k++) P(g, Math.round(base + (rnd() - 0.5) * R * 2), by - Math.round(rnd() * 3), 1, 1, k % 3 ? '#f4c838' : '#d8a020');
+  outline(c, season === 'fall' && L.bare < 0.5 ? '#3a2008' : '#10261a');
   return { cv: c, ax: base, ay: by, r: R };
 }
 
-export function makeTree(kind, size, seed, snow, season) {
+export function makeTree(kind, size, seed, snow, look) {
   if (kind === 'spruce') return drawSpruce(size, seed, snow);
   if (kind === 'pine') return drawPonderosa(size, seed, snow);
-  return drawAspens(size, seed, snow, season);
+  return drawAspens(size, seed, snow, look);
 }
 
 // Shrubs, drawn straight into a prop sprite.
@@ -172,14 +179,15 @@ export const SHRUBS = [
   ['gambel', 470, 250, 6], ['juniper', 660, 300, 6], ['rabbit', 92, 248, 5], ['gambel', 4, 374, 6], ['sage', 128, 322, 4],
   ['juniper', 12, 362, 8], ['gambel', -3, 349, 6],
 ];
-export function shrubProp([kind, bx, by, br], snow, season, trimmed) {
+export function shrubProp([kind, bx, by, br], snow, look, trimmed) {
   const w = br * 5 + 6, h = br * 3 + 6, x = bx - (w >> 1) - 2, y = by - h - 1;
   const cv = mk(w + 4, h + 4), g = cv.getContext('2d');
-  g.translate(-x, -y); drawShrub(g, kind, bx, by, br, snow, season, trimmed); outline(cv);
+  g.translate(-x, -y); drawShrub(g, kind, bx, by, br, snow, look, trimmed); outline(cv);
   return { cv, x, y, sortY: by / S - 0.2 };
 }
 
-export function drawShrub(g, kind, cx, by, r, snow, season, trimmed = false) {
+export function drawShrub(g, kind, cx, by, r, snow, look, trimmed = false) {
+  const L = lookOf(look), season = L.season;
   const rnd = mulberry32(Math.round(cx * 7 + by)), w = r * 5 + 6, h = r * 3 + 6, ox = cx - (w >> 1), oy = by - h + 1;
   const cl = [];
   // leaf clusters fill a dome: a full row along the ground, then random clumps under the dome's curve
@@ -199,14 +207,16 @@ export function drawShrub(g, kind, cx, by, r, snow, season, trimmed = false) {
       cl.push({ x: mid + u * half * 0.85, y: base - lift, r: r * (0.42 + rnd() * 0.2), ry: r * (low ? 0.38 : 0.48) });
     }
   }
-  if (kind === 'gambel' && season === 'winter') {
+  // Gambel oak leafs out late (bare until May) and holds its dead brown leaves into early winter
+  if (kind === 'gambel' && (season === 'winter' || L.melt)) {
     for (let i = 0; i < 9; i++) line(g, cx + Math.round((rnd() - 0.5) * r * 2.5), by, cx + Math.round((rnd() - 0.5) * r * 3.5), by - Math.round(r * (1 + rnd())), '#6a5040', 1);
     return;
   }
   let pal = FOLIAGE[kind];
-  if (kind === 'gambel') pal = FOLIAGE.gambel[season];
-  if (kind === 'rose' && season === 'winter') pal = ['#3a2a22', '#5a3a2a', '#6a4a32', '#7a5a3a', '#8a6a4a'];
-  const cv = paintClusters(w, h, cl, pal, { seed: Math.round(cx), noise: trimmed ? 0.25 : 0.5, spiky: trimmed ? 0 : kind === 'juniper' ? 0.45 : kind === 'sage' ? 0.3 : 0.15, snow });
+  if (kind === 'gambel') pal = L.bare > 0.5 ? FOLIAGE.gambel.dry : FOLIAGE.gambel[season];
+  if (kind === 'rose' && (season === 'winter' || L.melt)) pal = ['#3a2a22', '#5a3a2a', '#6a4a32', '#7a5a3a', '#8a6a4a'];
+  const sparse = (kind === 'gambel' || kind === 'rose') && L.bare > 0.5 && season === 'fall';
+  const cv = paintClusters(w, h, cl, pal, { seed: Math.round(cx), noise: trimmed ? 0.25 : 0.5, spiky: trimmed ? 0 : sparse ? 0.5 : kind === 'juniper' ? 0.45 : kind === 'sage' ? 0.3 : 0.15, snow });
   g.drawImage(cv, ox, oy);
   if (snow) return;
   const dots = (cols, k, yMax) => {
@@ -216,10 +226,12 @@ export function drawShrub(g, kind, cx, by, r, snow, season, trimmed = false) {
       P(g, x, y, 1, 1, cols[i % cols.length]);
     }
   };
-  if (kind === 'rabbit' && (season === 'fall' || season === 'summer')) {
-    // golden flower heads across the top
-    for (const c0 of cl) for (let k = 0; k < (trimmed ? 1 : 4); k++) P(g, Math.round(ox + c0.x + (rnd() - 0.5) * c0.r * 1.6), Math.round(oy + c0.y - c0.ry * (0.6 + rnd() * 0.4)), 2, 1, k % 2 ? '#f8e060' : '#e8c030');
+  if (kind === 'rabbit' && (L.key === 'fall-early' || L.key === 'summer' || L.key === 'fall-late')) {
+    // golden flower heads across the top in late summer and early fall, fluffy seed heads after
+    const heads = L.key === 'fall-late' ? ['#e0d4b0', '#c8b890'] : ['#f8e060', '#e8c030'];
+    for (const c0 of cl) for (let k = 0; k < (trimmed ? 1 : 4); k++) P(g, Math.round(ox + c0.x + (rnd() - 0.5) * c0.r * 1.6), Math.round(oy + c0.y - c0.ry * (0.6 + rnd() * 0.4)), 2, 1, heads[k % 2]);
   }
   if (kind === 'juniper') dots(['#8ab0d8', '#6a90c0'], 6, 1);
-  if (kind === 'rose') dots(season === 'summer' || season === 'spring' ? ['#f080a0', '#ffffff', '#f0a0b8'] : ['#c83a2a', '#e05a3a'], 7, 1);
+  // wild rose: bare canes in early spring, a flush of bloom in late spring, rose hips from fall on
+  if (kind === 'rose' && !L.melt) dots(L.blossom ? ['#f080a0', '#ffffff', '#f0a0b8', '#f8c0d0'] : season === 'summer' ? ['#f080a0', '#ffffff', '#f0a0b8'] : ['#c83a2a', '#e05a3a'], L.blossom ? 16 : 7, 1);
 }

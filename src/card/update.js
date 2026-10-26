@@ -1,7 +1,7 @@
 // Card: the simulation step.
 import { H, HORIZON, RW, S, W } from '../core/constants.js';
 import { pick, rand } from '../core/math.js';
-import { CART, FIRE, HOUSES, STUMP } from '../world/layout.js';
+import { CART, FIRE, HOUSES, LEAF_SPOTS, SNOWMAN_AT, STUMP } from '../world/layout.js';
 
 export const updateMethods = {
   _update(dt) {
@@ -44,7 +44,8 @@ export const updateMethods = {
     HOUSES.forEach((h, i) => {
       const fx = this._houseFx[i], o = occ[i];
       const lit = this._isLit(i, o, dark);
-      const smoky = lit || mode === 'morning' || (this._weather.snow && o.inside) || (h.tavern && (mode === 'meal' || mode === 'party'));
+      const cold = this._season === 'winter' || this._look?.key === 'fall-late' || this._look?.melt; // the stove's lit all day
+      const smoky = lit || mode === 'morning' || ((this._weather.snow || cold) && o.inside) || (h.tavern && (mode === 'meal' || mode === 'party' || cold));
       o.lit = lit;
       if (smoky && (fx.smoke -= dt) <= 0) {
         fx.smoke = rand(0.35, 0.6);
@@ -68,14 +69,18 @@ export const updateMethods = {
 
     // particles (compacted in place)
     const ps = this._particles;
-    let n = 0;
+    let n = 0, leaves = 0;
     for (const p of ps) {
       p.life -= dt;
       p.x += p.vx * dt; p.y += p.vy * dt;
       if (p.grav) p.vy += 60 * dt;
+      if (p.leaf) { p.x += Math.sin(p.life * 5) * 3 * dt; leaves++; } // leaves rock side to side as they fall
       if (p.life > 0) ps[n++] = p;
     }
     ps.length = n;
+    this._leafCount = leaves;
+    this._tickSeason(dt);
+    this._fallingLeaves(dt);
 
     // sky
     for (const c of this._clouds) {
@@ -106,6 +111,37 @@ export const updateMethods = {
         v.fxT = 0.12;
         this._spawn({ x: hx + v.face, y: v.y - 3, vx: v.face * 4, vy: 4, life: 0.4, c: '#6ab0f0', grav: true, layer: 0 });
         break;
+      case 'rake': {
+        v.fxT = 0.35;
+        const [px, py] = LEAF_SPOTS[v.plan?.pile ?? 0];
+        this._spawn({ x: hx + v.face * 3, y: v.y - 0.5, vx: (px - hx) * 1.2, vy: -2, life: 0.6, c: pick(['#f4c838', '#c0501c', '#d8a020']), layer: 0 });
+        break;
+      }
+      case 'leap':
+        v.fxT = 0.5; v.jumpT = 0.4;
+        for (let i = 0; i < 5; i++) this._spawn({ x: v.x + rand(-2, 2), y: v.y - 1, vx: rand(-14, 14), vy: rand(-28, -14), life: rand(0.5, 0.9), c: pick(['#f4c838', '#c0501c', '#d8a020', '#a86a14']), grav: true, layer: 1 });
+        break;
+      case 'shovel':
+        v.fxT = 0.75;
+        for (let i = 0; i < 3; i++) this._spawn({ x: hx + v.face * 4, y: v.y - 3, vx: v.face * rand(8, 16), vy: rand(-22, -12), life: 0.5, c: i ? '#ffffff' : '#c8d4ec', grav: true, layer: 0 });
+        break;
+      case 'snowman':
+        v.fxT = 0.6;
+        this._spawn({ x: SNOWMAN_AT.x + rand(-1.5, 1.5), y: SNOWMAN_AT.y - rand(2, 5), vx: rand(-6, 6), vy: rand(-12, -6), life: 0.4, c: '#ffffff', grav: true, layer: 0 });
+        break;
+      case 'sow':
+        v.fxT = 0.5;
+        for (let i = 0; i < 3; i++) this._spawn({ x: hx + v.face * 3, y: v.y - 6, vx: v.face * rand(6, 14), vy: rand(-8, -2), life: 0.45, c: '#d8c088', grav: true, layer: 0 });
+        break;
+      case 'throw': {
+        v.fxT = 2;
+        const o = v.plan?.target;
+        if (!o || o.inside || o.gone) break;
+        const tf = 0.6, dx = o.x - (v.x + v.face * 3), dy = o.y - 6 - (v.y - 9);
+        this._spawn({ x: v.x + v.face * 3, y: v.y - 9, vx: dx / tf, vy: (dy - 30 * tf * tf) / tf, life: tf, c: '#ffffff', grav: true, layer: 1 });
+        this._hits.push({ o, t: this._t + tf });
+        break;
+      }
       case 'sweep':
         v.fxT = 0.4;
         this._spawn({ x: hx + v.face * 2, y: v.y, vx: v.face * 6, vy: -3, life: 0.6, c: '#c8b088', layer: 0 });

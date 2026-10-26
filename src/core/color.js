@@ -72,3 +72,5 @@ export function skinRamp(hex) {
   return r;
 }
 export const C2 = (arr) => arr.map(hexToRgb);
+// A palette for a season look: its own entry, else its season's, else the default.
+export const byLook = (L, t, dflt) => t[L.key] || t[L.season] || dflt;

@@ -1,9 +1,10 @@
 // The mountain backdrop, hills and forest edge.
 import { FOLIAGE } from './foliage.js';
-import { C2, hexToRgb, mixHex } from '../core/color.js';
+import { C2, byLook, hexToRgb, mixHex } from '../core/color.js';
 import { HZ, RW } from '../core/constants.js';
 import { mulberry32 } from '../core/math.js';
 import { bayer, hash2, vnoise } from '../core/noise.js';
+import { lookOf } from '../core/time.js';
 
 // The backdrop, painted back to front:
 //   1. the far range: hazy, jagged, a flat-topped massif with a sheer east face, snowfields
@@ -13,7 +14,8 @@ import { bayer, hash2, vnoise } from '../core/noise.js';
 //   4. a forest edge of spruce/fir spires, ponderosa and aspen groves (two rows for depth);
 //   5. the rolling meadow in front of the village.
 // Every layer fills down to the horizon, so each one only paints the rows above the next one's top.
-export function* paintBackdrop(set, snow, season) {
+export function* paintBackdrop(set, snow, look) {
+  const L = lookOf(look), season = L.season;
   const HAZE = '#b6c6e0';
   const fade = (arr, k) => arr.map((c) => hexToRgb(mixHex(c, HAZE, k)));
   const frost = (arr, k) => (snow ? arr.map((c) => mixHex(c, '#eef4fc', k)) : arr);
@@ -32,8 +34,9 @@ export function* paintBackdrop(set, snow, season) {
     if (half < Math.abs(x - cx) || dy < tip) return 0;
     return x < cx ? 2 : 1;
   };
-  // how far down the snow reaches: deep in winter and spring, lingering snowfields in summer
-  const snowAmt = (snow ? 1.5 : 0) + ({ winter: 1, spring: 0.8, fall: 0.45, summer: 0.4 }[season] ?? 0.5);
+  // how far down the snow reaches: the snowpack builds through winter, peaks in early spring and shrinks to
+  // a few snowfields by late summer; a deep pack also covers the open sunlit slopes, not only the gullies
+  const snowAmt = (snow ? 1.5 : 0) + L.snowpack, cover = Math.max(0, snowAmt - 0.8) * 0.35;
 
   // ridgelines: each peak is an asymmetric cone (or a tilted flat summit); the highest wins per column,
   // then the line is roughened with broad undulation and serrated pinnacles
@@ -140,7 +143,7 @@ export function* paintBackdrop(set, snow, season) {
         light += -gF * 6 + (F - 0.5) * 0.3 + (broad - 0.5) * 0.2;
         const gully = F < 0.5, sl = o.snowY + (fbm(x * 0.03, 2, seed + 9) - 0.5) * 16 + (fbm(x * 0.13, y * 0.06, seed + 10) - 0.5) * 9;
         // snow only where it's high enough: the snowline is an altitude, ragged, reaching a little lower in the gullies
-        const isSnow = !cliff && (gully ? y < sl + (0.5 - F) * 44 : y < sl - 3 && (light > 0.4 || depth < 4));
+        const isSnow = !cliff && (gully ? y < sl + (0.5 - F) * 44 : y < sl - 3 && (light > 0.4 - cover || depth < 4));
         const tl = o.treeY ? o.treeY + (fbm(x * 0.03, 4, seed + 11) - 0.5) * 16 + (fbm(x * 0.12, 5, seed + 12) - 0.5) * 6 : 1e9;
         let col;
         const ft = o.treeY ? forestTex(x, y, Math.round(tl), seed + 3) : -1;
@@ -172,13 +175,13 @@ export function* paintBackdrop(set, snow, season) {
   yield* paintRange(range, stop2, {
     rock: ['#3e4664', '#545c7a', '#747a96', '#9498ae'], warm: ['#54485a', '#6e5e6c', '#8e7a84', '#aa96a0'],
     snow: ['#c0cce4', '#eaf0fa'], forest: ['#203a3a', '#2a4a44', '#365a4c'], tundra: ['#6e6a50', '#867c58', '#7a5e48'], base: '#6c84a0', line: '#1c2034',
-  }, 72, { haze: 0.1, snowY: 94 + snowAmt * 12, treeY: HZ - 56, hazeH: 0 });
+  }, 72, { haze: 0.1, snowY: 94 + snowAmt * 16, treeY: HZ - 56, hazeH: 0 });
   yield;
 
   // foothills: dense forest, lit western flanks, meadow clearings, sandstone slabs
   const fForest = fade(frost(['#1c3632', '#24443a', '#305442', '#3e664c'], 0.5), 0.07);
-  const meadowPal = { spring: ['#5e8a44', '#76a050'], summer: ['#5a7e44', '#6e9450'], fall: ['#8a8a48', '#a8a058'], winter: ['#7e7658', '#958a66'] }[season] || ['#5a7e44', '#6e9450'];
-  const fMeadow = fade(frost(meadowPal, 0.8), 0.07), slab = C2(frost(['#6e3c30', '#9a5644', '#bc7254', '#d89068'], 0.45));
+  const meadowPal = byLook(L, { 'spring-early': ['#727a4a', '#8a8e56'], spring: ['#5e8a44', '#76a050'], 'fall-early': ['#7e8646', '#9a9a54'], fall: ['#8e8248', '#a8965a'], winter: ['#7e7658', '#958a66'] }, ['#5a7e44', '#6e9450']);
+  const fMeadow = fade(frost(meadowPal, 0.8), 0.07), fSnowPatch = fade(['#c8d2e2', '#e6ecf6'], 0.1), slab = C2(frost(['#6e3c30', '#9a5644', '#bc7254', '#d89068'], 0.45));
   for (let x = 0; x < RW; x++) {
     const slope = (hill[Math.min(RW - 1, x + 3)] - hill[Math.max(0, x - 3)]) / 6;
     for (let y = Math.round(foot[x]); y < stop3[x]; y++) {
@@ -190,7 +193,11 @@ export function* paintBackdrop(set, snow, season) {
         const [ax, , hw] = SLABS[si], u = (x - ax) / hw, e = slabEdge(si, x);
         col = slab[u > 1.1 ? 0 : (y + Math.floor(x * 0.6)) % 4 === 0 ? 1 : u < -0.5 || y - e.top < 1 ? 3 : 2];
         if (e.bot - y < 4 && hash2(x, y, 72) < 0.5) col = fForest[1];
-      } else if (fbm(x * 0.03, y * 0.09, 66) > 0.64 && depth < 12) col = fMeadow[hash2(x, y, 67) < 0.3 ? 1 : 0];
+      } else if (fbm(x * 0.03, y * 0.09, 66) > 0.64 && depth < 12) {
+        col = fMeadow[hash2(x, y, 67) < 0.3 ? 1 : 0];
+        // in winter the shaded clearings hold old snow (the sunny ones melt out between storms)
+        if (!snow && (season === 'winter' || L.melt) && slope < (L.melt ? -0.1 : 0.05)) col = fSnowPatch[hash2(x, y, 69) < 0.25 ? 1 : 0];
+      }
       else {
         const ft = forestTex(x, y + 3, Math.round(hill[x]), 68);
         col = fForest[ft < 0 ? 1 : ft === 2 ? (slope > 0 ? 3 : 2) : ft === 1 ? 1 : 0];
@@ -202,11 +209,12 @@ export function* paintBackdrop(set, snow, season) {
   yield;
 
   // the forest edge: hill body, then the back row and the front row of trees
-  const hillPal = fade(frost({ fall: ['#3e5e36', '#4e7040'], winter: ['#4e5a40', '#606c4c'] }[season] || ['#2c5a40', '#3c6c4a'], 0.8), 0.04);
+  const hillPal = fade(frost(byLook(L, { 'spring-early': ['#46583c', '#566a46'], 'fall-late': ['#4e5a3a', '#606a44'], fall: ['#3e5e36', '#4e7040'], winter: ['#4e5a40', '#606c4c'] }, ['#2c5a40', '#3c6c4a']), 0.8), 0.04);
   for (let x = 0; x < RW; x++) {
     for (let y = Math.round(mh(x)); y < stop4[x]; y++) set(x, y, hillPal[y - mh(x) < 2 || hash2(x, y, 17) < 0.07 ? 1 : 0]);
   }
-  const aspenPal = season === 'winter' ? ['#6a6458', '#8a8274', '#a69e90'] : FOLIAGE.aspen[season === 'fall' ? 'fall' : season === 'spring' ? 'spring' : 'summer'].slice(1, 4);
+  const aspenPal = L.bare >= 0.5 ? (season === 'fall' ? ['#7a6448', '#9a8462', '#b4a07a'] : ['#6a6458', '#8a8274', '#a69e90'])
+    : FOLIAGE.aspen[season === 'fall' ? 'fall' : L.key === 'spring-late' ? 'spring' : 'summer'].slice(1, 4);
   const pals = {
     spruce: [fade(frost(FOLIAGE.spruce.slice(0, 3), 0.4), 0.2), fade(frost(FOLIAGE.spruce.slice(0, 3), 0.4), 0.05)],
     pine: [fade(frost(FOLIAGE.pine.slice(1, 4), 0.4), 0.2), fade(frost(FOLIAGE.pine.slice(1, 4), 0.4), 0.05)],
@@ -245,7 +253,10 @@ export function* paintBackdrop(set, snow, season) {
   yield;
 
   // the meadow before the village: patchy grass, the odd shrub
-  const mPal = fade(frost({ spring: ['#4e8c42', '#66a650', '#3e7636', '#82bc60'], fall: ['#748a3e', '#90a04a', '#5e7234', '#aab45a'], winter: ['#7a7450', '#948a5e', '#665e44', '#ae9e6c'] }[season] || ['#4c8c46', '#62a24e', '#3c7638', '#7cb85c'], 0.85), 0.02);
+  const mPal = fade(frost(byLook(L, {
+    'spring-early': ['#6a7a44', '#82904e', '#56663a', '#9aa45e'], spring: ['#4e8c42', '#66a650', '#3e7636', '#82bc60'],
+    'fall-early': ['#748a3e', '#90a04a', '#5e7234', '#aab45a'], fall: ['#86803e', '#a0984c', '#6e6836', '#b8ac5e'], winter: ['#7a7450', '#948a5e', '#665e44', '#ae9e6c'],
+  }, ['#4c8c46', '#62a24e', '#3c7638', '#7cb85c']), 0.85), 0.02);
   for (let x = 0; x < RW; x++) {
     const ht = nearTop[x];
     for (let y = ht; y < HZ; y++) {

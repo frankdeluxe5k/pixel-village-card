@@ -45,6 +45,11 @@ export const KEYS = {
   toss: [{ f: [2, -6] }, { f: [6, -3] }, { f: [7, 0] }, { f: [4, 3] }],
   announce: [{ f: [6, -5] }, { f: [7, -3] }],
   juggle: [{ f: [5, -2], b: [3, 1] }, { f: [5, 1], b: [3, -2] }],
+  // seasonal chores: shovel bites into the snow, lifts, tosses it aside, comes back
+  shovel: [
+    { f: [5, 4], b: [1, 2], dir: [0.45, 0.9] }, { f: [4, 1], b: [0, 0], dir: [0.85, 0.35], bob: 1 },
+    { f: [3, -3], b: [-1, -3], dir: [0.9, -0.45] }, { f: [5, 2], b: [1, 1], dir: [0.6, 0.8] },
+  ],
 };
 // pose -> [keyframe set, frames per second, playback order]
 export const ANIM = {
@@ -69,14 +74,20 @@ export const ANIM = {
   knock: ['knock', 4, [0, 1, 0, 1, 0, 0, 0, 0]], shrug: ['shrug', 1, [0]], paint: ['paint', 5, [0, 1, 2, 3]],
   trim: ['trim', 6, [0, 1]], prune: ['prune', 5, [0, 1]], crank: ['crank', 5, [0, 1, 2, 3]],
   toss: ['toss', 4, [0, 0, 1, 2, 3, 3]], announce: ['announce', 2, [0, 1]], juggle: ['juggle', 5, [0, 1]],
+  rake: ['sweep', 4, [0, 1, 2, 3, 2, 1]], shovel: ['shovel', 4, [0, 1, 2, 2, 3, 0]], sow: ['toss', 4, [0, 1, 2, 3]],
+  throw: ['toss', 4, [0, 0, 0, 1, 2, 3, 3, 3]], harvest: ['fetch', 3, [0, 1, 2, 3]], pat: ['cook', 4, [0, 1, 2, 3]],
 };
 export const LIFT = { dance: [0, 2, 3, 2], kidplay: [0, 2, 3, 2], prune: [4, 4, 4, 4] };
 // Actions that simply play a pose of another name (event crews and onlookers).
 export const ACTION_POSE = {
   build: 'setup', sell: 'chat', pitch: 'chat', browse: 'idle', admire: 'idle', chisel: 'sign', cheer: 'dance', hitch: 'setup',
   knock: 'knock', shrug: 'shrug', paint: 'paint', trim: 'trim', prune: 'prune', crank: 'crank', toss: 'toss', announce: 'announce', juggle: 'juggle',
+  rake: 'rake', shovel: 'shovel', sow: 'sow', throw: 'throw', harvest: 'harvest', snowman: 'pat', leap: 'kidplay',
 };
 // Tools held for a pose (by frame where it matters).
-export const POSE_TOOL = { paint: () => 'brush', trim: () => 'shears', prune: () => 'shears', toss: (f) => (f < 2 ? 'ring' : null), juggle: () => 'balls' };
+export const POSE_TOOL = {
+  paint: () => 'brush', trim: () => 'shears', prune: () => 'shears', toss: (f) => (f < 2 ? 'ring' : null), juggle: () => 'balls',
+  rake: () => 'rake', shovel: () => 'shovel', throw: (f) => (f < 2 ? 'snowball' : null), harvest: () => 'pumpkin',
+};
 
 export const SIT_POSES = new Set(['sit', 'eat', 'watch', 'lutesit', 'laptop', 'sip', 'handheld', 'controller', 'band_drums']);

@@ -109,3 +109,7 @@ export const AWAY_READ = { x: 29, y: 115.2 };
 // Where the travelling band plays: up in front of the tavern, above the string lights over the square,
 // the drummer a step back in the middle. Same order as INSTRUMENTS.
 export const BAND_SPOTS = [{ x: 94.5, y: 84.5, face: 1 }, { x: 86, y: 88.5, face: 1 }, { x: 102, y: 88.5, face: -1 }, { x: 109, y: 88, face: -1 }];
+
+// Seasonal yard spots (sim units), on open grass off the paths: leaf piles in fall, the kids' snowman.
+export const LEAF_SPOTS = [[76, 96], [68, 90], [132, 95], [172, 93]];
+export const SNOWMAN_AT = { x: 122, y: 88 };

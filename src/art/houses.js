@@ -5,7 +5,9 @@ import { mulberry32 } from '../core/math.js';
 import { hash2, vnoise } from '../core/noise.js';
 import { P, ellipse, line, mk, outline } from '../core/pixels.js';
 
-export function drawHouse(g, h, snow) {
+// decor: window boxes and doorstep for the season ('bloom' geraniums, 'bare' soil in early spring,
+// 'harvest' mums with pumpkins and a corn shock, 'winter' evergreen sprigs and a wreath)
+export function drawHouse(g, h, snow, decor = 'bloom') {
   const { X, Wd, top, bot, ridge } = h.g;
   const roof = ramp(h.roof), logs = ramp(h.logs), beam = ramp('#5a3a22'), cream = ramp('#e8dcc0');
   const mortar = '#3a3440', rnd = mulberry32(h.x * 7 + 3);
@@ -71,10 +73,7 @@ export function drawHouse(g, h, snow) {
     if (snow) { P(g, gx - 4, gy - 7, 17, 2, '#ffffff'); P(g, gx - 3, gy + 10, 15, 2, '#ffffff'); continue; }
     if (h.tavern) continue;
     P(g, gx - 3, gy + 11, 15, 3, '#7a4a28'); P(g, gx - 3, gy + 11, 15, 1, '#9a6a3a'); P(g, gx - 3, gy + 13, 15, 1, '#4a2a18');
-    for (let i = 0; i < 7; i++) {
-      P(g, gx - 2 + i * 2, gy + 9 + (i % 2), 2, 2, i % 3 === 2 ? '#f080a0' : '#e03040');
-      if (i % 2 === 0) P(g, gx - 2 + i * 2, gy + 11, 1, 1, '#3a8a3a');
-    }
+    boxPlants(g, gx - 2, gy + 9, decor);
   }
 
   // arched stone doorway with a Z-braced plank door
@@ -92,6 +91,26 @@ export function drawHouse(g, h, snow) {
   line(g, dx + 1, dy + dh - 4, dx + dw - 2, dy + 5, dr.l, 2);
   P(g, dx + dw - 4, dy + (dh >> 1), 2, 2, '#e0b040'); P(g, dx + dw - 4, dy + (dh >> 1) + 2, 2, 1, '#8a6010');
   P(g, dx - 4, bot, dw + 8, 3, qs.m); P(g, dx - 4, bot, dw + 8, 1, qs.h); P(g, dx - 4, bot + 2, dw + 8, 1, qs.d);
+  if (decor === 'winter') {
+    // an evergreen wreath with a red bow on the door
+    const wx = dx + (dw >> 1), wy = dy + 8;
+    for (let a = 0; a < 16; a++) { const t = (a / 16) * Math.PI * 2; P(g, Math.round(wx + Math.cos(t) * 3.5) - 1, Math.round(wy + Math.sin(t) * 3.5) - 1, 2, 2, a % 3 ? '#2a5a3a' : '#3e7a4c'); }
+    P(g, wx - 2, wy + 2, 1, 1, '#d02a2a'); P(g, wx + 2, wy - 1, 1, 1, '#d02a2a');
+    P(g, wx - 2, wy - 5, 2, 2, '#d02a2a'); P(g, wx + 1, wy - 5, 2, 2, '#d02a2a'); P(g, wx, wy - 4, 1, 3, '#a01a1a');
+  } else if (decor === 'harvest' && !snow) {
+    // pumpkins on the stoop and a corn shock against the doorway
+    for (const [px, pw] of [[dx - 9, 6], [dx - 4, 4]]) {
+      const ph = pw - 1;
+      P(g, px, bot - ph, pw, ph, '#e07a28'); P(g, px, bot - ph, pw, 1, '#f8a040'); P(g, px + 1, bot - ph, 1, ph, '#f8a040');
+      P(g, px + (pw >> 1), bot - ph, 1, ph, '#b85a18'); P(g, px, bot - 1, pw, 1, '#a84a18'); P(g, px + (pw >> 1), bot - ph - 2, 1, 2, '#4a6a28');
+    }
+    const sx = dx + dw + 6;
+    for (let y = bot - 18; y < bot; y++) {
+      const hw = y < bot - 13 ? Math.max(0, (y - bot + 18) >> 1) : 3 + ((y - bot + 13) >> 2);
+      for (let x = -hw; x <= hw; x++) P(g, sx + x, y, 1, 1, (x + y) % 3 === 0 ? '#b8944a' : x < 0 ? '#e0c070' : '#c8a458');
+    }
+    P(g, sx - 3, bot - 9, 7, 1, '#8a3a20');
+  }
 
   // lantern on an iron bracket
   const { x: lx, y: ly } = h.lantern;
@@ -173,9 +192,17 @@ export function drawHouse(g, h, snow) {
     if (!snow) {
       for (const [gx] of h.glass) {
         P(g, gx - 2, fy - 4, 13, 3, '#6a3a20');
-        for (let i = 0; i < 6; i++) P(g, gx - 1 + i * 2, fy - 6 + (i % 2), 2, 2, i % 3 === 1 ? '#f080a0' : '#e03040');
+        boxPlants(g, gx - 1, fy - 6, decor, 6);
       }
     } else P(g, X - 5, fy - 9, Wd + 10, 2, '#ffffff');
+    if (decor === 'winter') {
+      // evergreen swags along the balcony rail, a red bow at each post
+      for (let x = X - 5; x < X + Wd + 5; x++) {
+        const t = ((x - X + 5) % 16) / 16, y = fy - 7 + Math.round(Math.sin(t * Math.PI) * 3);
+        P(g, x, y, 1, 2, (x & 1) ? '#2a5a3a' : '#3a7048');
+        if ((x - X + 5) % 16 === 0) { P(g, x - 1, fy - 9, 3, 2, '#d02a2a'); P(g, x, fy - 7, 1, 2, '#a01a1a'); }
+      }
+    }
 
     // hanging tavern sign with a frothy mug
     P(g, X - 15, top + 13, 16, 2, '#3a3a46'); P(g, X - 15, top + 13, 16, 1, '#6a6a7a');
@@ -189,7 +216,7 @@ export function drawHouse(g, h, snow) {
 }
 
 // Little picket fence across the front yard, open at the door.
-export function drawYardFence(g, h, snow) {
+export function drawYardFence(g, h, snow, decor = 'bloom') {
   const { X, Wd, bot } = h.g, { x: dx, w: dw } = h.doorHi, wd = ramp('#b0844a'), y0 = bot + 4;
   for (const [a, b] of [[X - 6, dx - 7], [dx + dw + 7, X + Wd + 6]]) {
     for (const ry of [y0 - 7, y0 - 3]) { P(g, a, ry, b - a, 2, wd.d); P(g, a, ry, b - a, 1, wd.l); }
@@ -198,21 +225,34 @@ export function drawYardFence(g, h, snow) {
       P(g, x + 1, y0 - 11, 1, 1, wd.m);
       if (snow) P(g, x, y0 - 12, 3, 2, '#ffffff');
     }
-    if (!snow) {
+    if (!snow && decor !== 'winter') {
       for (let x = a + 2; x < b - 2; x += 7) {
-        P(g, x, y0 - 1, 3, 1, '#3a8a3a');
-        P(g, x + 1, y0 - 2, 1, 1, ['#f05a6a', '#f8e060', '#ffffff', '#c890f8'][(x >> 3) % 4]);
+        P(g, x, y0 - 1, 3, 1, decor === 'bare' ? '#5a7a3a' : decor === 'harvest' ? '#6a7a3a' : '#3a8a3a');
+        if (decor === 'bloom') P(g, x + 1, y0 - 2, 1, 1, ['#f05a6a', '#f8e060', '#ffffff', '#c890f8'][(x >> 3) % 4]);
+        else if (decor === 'harvest' && (x >> 3) % 2) P(g, x + 1, y0 - 2, 1, 1, '#e08a20');
       }
     }
   }
 }
 
-export function makeHouse(h, snow) {
+// Window-box planting for the season, `n` clumps two pixels apart from (x, y).
+export function boxPlants(g, x, y, decor, n = 7) {
+  for (let i = 0; i < n; i++) {
+    const px = x + i * 2, py = y + (i % 2);
+    if (decor === 'bare') { if (i % 3 === 1) P(g, px, y + 1, 1, 1, '#7ac850'); continue; } // just planted
+    if (decor === 'winter') { P(g, px, py, 2, 2, i % 2 ? '#2a5a3a' : '#3a7048'); if (i % 3 === 1) P(g, px, py, 1, 1, '#d02a2a'); continue; }
+    const cols = decor === 'harvest' ? ['#e08a20', '#c0401c', '#f0c040'] : ['#e03040', '#e03040', '#f080a0'];
+    P(g, px, py, 2, 2, cols[i % 3]);
+    if (i % 2 === 0) P(g, px, y + 2, 1, 1, '#3a8a3a');
+  }
+}
+
+export function makeHouse(h, snow, decor = 'bloom') {
   const { X, Wd, top, bot } = h.g, ox = X - 24, oy = top - 50;
   const c = mk(Wd + 64, bot - oy + 12), g = c.getContext('2d');
   g.translate(-ox, -oy);
-  drawHouse(g, h, snow);
-  drawYardFence(g, h, snow);
+  drawHouse(g, h, snow, decor);
+  drawYardFence(g, h, snow, decor);
   if (h.tavern) { drawBarrel(g, X + Wd + 8, bot + 1); drawCrate(g, X + Wd + 16, bot + 1, 12); drawCrate(g, X + Wd + 18, bot - 11, 10); }
   outline(c);
   return { cv: c, x: ox, y: oy };

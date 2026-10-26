@@ -56,7 +56,7 @@ export function buildVillager(v, pose, frame, carry, gear) {
   if (carry === 'log') { back = [-1, -3]; front = [2, -3]; }
   else if (carry === 'bucket' && pose !== 'water') { front = [1, 6]; tool = 'bucket'; }
   else if (carry === 'sign') { back = [4, 2]; front = [5, 1]; }
-  else if (carry === 'package' || carry === 'crate') { back = [4, 3]; front = [6, 2]; }
+  else if (carry === 'package' || carry === 'crate' || carry === 'pumpkins') { back = [4, 3]; front = [6, 2]; }
   else if (carry === 'ladder') { back = [3, -3]; front = [5, -2]; }
   else if (carry === 'mail') front = [4, -1];
   const stick = gear && !tool && !carry && (pose === 'walk' || pose === 'idle');
@@ -77,7 +77,7 @@ export function buildVillager(v, pose, frame, carry, gear) {
   if (gear) line(g, AX - 3, tt + 1, AX + 1, tt + 5, '#4a2a18', 1);
 
   limb(g, sf, hf, shirt, skin, true);
-  if (tool === 'hoe' || tool === 'axe' || tool === 'hammer') drawHafted(g, tool, hf, dir || [0.8, 0.6]);
+  if (tool === 'hoe' || tool === 'axe' || tool === 'hammer' || tool === 'shovel') drawHafted(g, tool, hf, dir || [0.8, 0.6]);
   else if (INSTRUMENTS.includes(tool)) drawInstrument(g, v, tool, hf, hb, tt, skin);
   else if (tool) drawTool(g, tool, hf[0], hf[1], frame, tt, tb);
   if (carry && carry !== 'bucket' && carry !== 'case') drawCarry(g, carry, hf[0], hf[1], tt);
