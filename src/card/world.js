@@ -9,6 +9,7 @@ import { seasonOf } from '../core/time.js';
 import { activatedAt, evalReactions, reactionKind } from '../ha/reactions.js';
 import { autoWeather, isLive, readWeather } from '../ha/weather.js';
 import { FIRE, HOUSES } from '../world/layout.js';
+import { freeSpot } from '../world/nav.js';
 
 export const worldMethods = {
   _initVillage() {
@@ -196,6 +197,7 @@ export const worldMethods = {
         v.plan = p;
         if (p.enter) { v.inside = true; v.slept = this._mode === 'sleep'; v.actT = p.dur; continue; }
         if (p.gone) { v.gone = true; v.actT = p.dur; continue; }
+        [p.x, p.y] = freeSpot(p.x, p.y); // as _think does for every walk: never start inside a footprint
         v.x = v.tx = p.x; v.y = v.ty = p.y; v.carry = p.carry || null;
         this._arrive(v);
         v.actT = rand(0, p.dur);
@@ -205,6 +207,7 @@ export const worldMethods = {
         v.active = true; v.leaving = false; v.stayUntil = this._t + rand(40, 200); v.entry = 'east';
         v.gone = false; v.x = FIRE.x; v.y = FIRE.y + 12;
         const p = this._plan(v);
+        [p.x, p.y] = freeSpot(p.x, p.y);
         v.plan = p; v.x = v.tx = p.x; v.y = v.ty = p.y; this._arrive(v); v.actT = rand(0, p.dur);
       };
       if (this._config.visitors !== false) this._villagers.filter((v) => v.job === 'visitor').slice(0, want).forEach(settle);
@@ -213,7 +216,10 @@ export const worldMethods = {
       return;
     }
     for (const v of this._villagers) {
-      v.rethinkAt = this._t + rand(0.2, 3) + v.id * 0.4;
+      // residents notice one after another; guests (visitors, the band, crews) have high ids, so they get a short
+      // random delay instead, and a change never pushes back a rethink that was already due sooner
+      const lag = v.guest ? rand(0, 1.5) : v.id * 0.4;
+      v.rethinkAt = Math.min(v.rethinkAt || Infinity, this._t + rand(0.2, 3) + lag);
       if (triggered && !v.inside && !v.gone) v.bubble = { g: 'bang', c: '#d03030', t: 1.6 };
     }
   },
