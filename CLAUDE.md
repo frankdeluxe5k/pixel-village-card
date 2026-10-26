@@ -5,27 +5,39 @@ follow a daily routine, visitors come and go, animals wander, and the whole scen
 day, the weather, the season and whatever is happening in the user's home (scenes, scripts, any entity).
 It's meant to be shared and to work across many different Home Assistant setups, not just one.
 
-Repo: `github.com/frankdeluxe5k/pixel-village-card` (public since v2.2.0, installable through HACS as a
-custom repository). Commit as `frankdeluxe5k` (`89476351+frankdeluxe5k@users.noreply.github.com`). Only commit
-or push when the user asks. Everything pushed is public: commit messages, CLAUDE.md and history included, so
-keep them free of real places, named inspirations and anything personal.
+Repo: `github.com/frankdeluxe5k/companion-village-card` (private for now; it becomes public when 2.0 is ready
+for HACS). This is "Village 2.0": a copy of v1 (`github.com/frankdeluxe5k/pixel-village-card`, which stays a
+single file and keeps working for existing installs) split into modules with a build step. Commit as
+`frankdeluxe5k` (`89476351+frankdeluxe5k@users.noreply.github.com`). Only commit or push when the user asks.
+Treat everything pushed as public (commit messages, CLAUDE.md and history included), so keep it free of real
+places, named inspirations and anything personal.
 
-The display name is "HA Companion Village", but the element type (`custom:pixel-village-card`), the file name, class
-names and repo URL keep the old name on purpose so existing dashboards and HACS installs keep working. Public
-text stays vague about the setting: no real places and no named consoles, games or other inspirations.
+The display name is "HA Companion Village". The element type is `custom:companion-village-card` (editor:
+`companion-village-card-editor`), the file `companion-village-card.js`. All of these differ from v1's
+`pixel-village-card` names so both can be installed side by side; the bundle is an IIFE, so none of v2's
+top-level names leak into the page (v1, a classic script, does put its names in the global scope). Public text
+stays vague about the setting: no real places and no named consoles, games or other inspirations.
 
-## Files
+## Files and build
 
-- `pixel-village-card.js` — the whole card, one file, no dependencies, no build step. Classic script (not a
-  module), so top-level functions are globals (handy in browser tests).
-- `demo.html` — standalone preview: time slider, time-lapse, mood buttons, weather, season. Drives the card
-  with a fake `hass` and `card.previewHour` / `card.previewSeason`. Also published as a claude.ai artifact.
-- `README.md` — user docs (install, editor, reaction conditions, YAML, moods, options).
-- `hacs.json` — HACS metadata (type Dashboard / category `plugin`, minimum HA 2024.11 for `getGridOptions`).
-- `LICENSE` (MIT), `images/` (README screenshots, rendered from the demo), `.github/workflows/validate.yml`
-  (`hacs/action` + `node --check`). HACS needs the repo public, a GitHub release, a repo description, topics
-  and issues enabled (all in place). Releases are tagged `v<PV_VERSION>` (e.g. `v2.2.0`) with
-  `pixel-village-card.js` attached; bump `PV_VERSION` before tagging a new one.
+- `src/` — the card as ES modules (layout below). No runtime dependencies.
+- `build.mjs` (esbuild, the only build dependency): `npm run build` → `dist/companion-village-card.js` (IIFE,
+  es2020, not minified). `npm run build:dev` also writes `dist/companion-village-card.dev.js` from
+  `src/dev.js`, which exposes every module's exports as `window.CompanionVillage` (sprite sheets, route fuzz,
+  the demo's event buttons). `npm run watch` rebuilds on change; `npm run check` = dev build + `node --check`.
+  `dist/` is not committed.
+- `demo.html` — standalone preview (loads the dev build; run `npm run build:dev` first): time slider,
+  time-lapse, mood buttons, weather, season, events. Drives the card with a fake `hass` and `card.previewHour`
+  / `previewSeason` / `previewWeather` / `previewEvent`.
+- `tests/` — `pixel-diff.mjs` and `logic-diff.mjs` (see Testing).
+- `README.md` — user docs. `hacs.json` — HACS metadata (Dashboard / `plugin`, minimum HA 2024.11 for
+  `getGridOptions`, `filename: companion-village-card.js`).
+- `.github/workflows/validate.yml` (`hacs/action` + `npm ci` + `npm run check`), `release.yml` (publishing a
+  GitHub release builds the card and attaches `dist/companion-village-card.js`, which is what HACS downloads;
+  it fails if `src/version.js` doesn't match the tag). Releases are tagged `v<PV_VERSION>`; bump
+  `src/version.js` and `package.json` together. HACS also needs the repo public, a repo description, topics
+  and issues enabled.
+- `LICENSE` (MIT), `images/` (README screenshots, rendered from the demo).
 
 ## Hard requirements
 
@@ -60,31 +72,64 @@ text stays vague about the setting: no real places and no named consoles, games 
 - Pixel art rules: diagonals use clean, repeating stairs (the amphitheater uses an exact 2:1 step via
   `stairY`); no anti-aliased shapes (`fillPoly` is a scanline fill; `imageSmoothingEnabled = false`).
 
-## Structure of pixel-village-card.js (in order)
+## Module layout (src/)
 
-1. **Constants:** moods (`MODES`), schedule, jobs, looks, `HOUSES` (each with its own `base` depth line; derived
-   geometry in `h.g`, `h.door`, `h.glass`, `h.lantern`, `h.chimHi`), `PATHS` (village path network), fire,
-   well, stump, screen/amphitheater, farm, café, band spots, seats, `FOOTPRINTS`, `NAV` (path graph),
-   `route()` / `freeSpot()` / `blocked()` / `clearPath()` (exact segment-vs-rect test, `segHits`, so paths
-   can't clip a corner between samples). Spots no NAV node can see (behind a house, right in front of a cart)
-   detour via `CORNERS` (static footprint corners) and `eventCorners`; a route that starts inside a footprint
-   steps out to its front first.
-2. **Helpers:** seeded RNG, colour ramps (`ramp()`: hue-shifted 5-step ramps), Bayer dither, value noise,
-   `P` (fillRect), `line`, `ellipse`, `fillPoly`, `tpl` (char-template sprites), `outline()` (selective dark
-   outline), `flipH`.
-3. **Villager sprites:** head/hair/hat/beard templates, limbs, torso outfits per job, tools, instruments,
-   `KEYS`/`ANIM` keyframe animation tables, `buildVillager()` (+ `buildRider()` for the bicycle).
-4. **Animals:** `animalSprite()` (dog, cat, rabbit, squirrel, bird), `CAT_SPOTS`, `RABBIT_ZONES`,
-   `TREE_BASES`, `birdSpot()`.
-5. **Foliage:** `seasonOf()`, `FOLIAGE` palettes, `paintClusters()`, spruce / ponderosa / aspen grove
-   (`makeTree(kind, …)`), `drawShrub(kind, …)`.
-6. **Scenery:** houses (`drawHouse`, `makeHouse` → per-house depth sprite), well, woodpile, `buildLand()`
-   (terrain, mountains, hills, paths, plaza, pond, farm soil, ground decorations) which also returns
-   `land.props` (trees and props as separate depth-sorted sprites), clouds, amphitheater, café, props.
-7. **Reactions:** `reactionKind()`, `activatedAt()`, `evalReactions()`, `suggestReactions()`.
-8. **Visual editor:** `PixelVillageCardEditor` (custom element `pixel-village-card-editor`).
-9. **The card:** `PixelVillageCard` — setup/loop, world state, guests (visitors/mail/band), animal AI,
-   villager planning (`_plan`, `_planGuest`, `_planMail`), simulation, rendering.
+Imports run one way: `core` ← `world` ← `art` ← `content/events` ← `ha` ← `editor` / `card` ← `index`. The
+plain data files in `content/` (`moods`, `jobs`, `band`, `crew-looks`) import nothing, so anything may use them
+(art reads outfits and band colours from there). Keep the graph free of cycles. Only `index.js` has side effects (defining the elements); every other module just declares
+things, plus a few one-time setup statements on its own data (house geometry, path smoothing, extra hats).
+
+- `index.js` (element registration, `window.customCards`), `version.js` (`PV_VERSION`), `dev.js` (test build).
+- `core/` — knows nothing about the village: `constants.js` (`W H HORIZON S RW RH HZ OUT DEFAULT_FPS`),
+  `math.js` (`rand pick clamp01 lerp mulberry32 towardX`), `color.js` (`ramp()`: hue-shifted 5-step ramps,
+  `skinRamp`, mixing), `noise.js` (Bayer dither, value noise), `pixels.js` (`mk`, `P` = fillRect, `line`,
+  `ellipse`, `fillPoly`, `tpl` char-template sprites, `outline()` selective dark outline, `flipH`, `opaqueBox`),
+  `time.js` (`parseHour`, `hourToTime`, `dayKey`, `seasonOf`).
+- `world/` — `layout.js`: `HOUSES` (each with its own `base` depth line; derived geometry in `h.g`, `h.door`,
+  `h.glass`, `h.lantern`, `h.chimHi`), `PATHS`, fire, well, stump, pond, lamps, screen/amphitheater, farm,
+  café, band spots, seats. `nav.js`: `FOOTPRINTS`, `NAV` (path graph), `EVENT_BLOCKS`/`setEventBlocks`,
+  `route()` / `freeSpot()` / `blocked()` / `clearPath()` (exact segment-vs-rect test, `segHits`, so paths can't
+  clip a corner between samples). Spots no NAV node can see (behind a house, right in front of a cart) detour
+  via `CORNERS` (static footprint corners) and `eventCorners`; a route that starts inside a footprint steps
+  out to its front first. `spots.js`: `CAT_SPOTS`, `RABBIT_ZONES`, `TREE_BASES`, `birdSpot()`.
+- `art/` — procedural drawing; callers cache the results. `villager/` (`frame.js` sprite size/anchor,
+  `head.js` heads/faces/hair/beards/`HATS`, `anim.js` `KEYS`/`ANIM`/`LIFT`/`ACTION_POSE`/`POSE_TOOL`,
+  `body.js` limbs/torso/`drawOutfit`, `tools.js` tools/carried things/instruments, `build.js`
+  `buildVillager()` + `buildRider()` for the bicycle), `animals.js` (`animalSprite()`), `foliage.js`
+  (`FOLIAGE` palettes, `paintClusters()`, spruce / ponderosa / aspen grove `makeTree(kind, …)`, `SHRUBS`,
+  `drawShrub(kind, …)`), `houses.js`, `props.js`, `backdrop.js` (`paintBackdrop`), `land.js`
+  (`buildLandSteps` / `buildLand`: terrain, paths, plaza, pond, farm soil, ground decorations, and
+  `land.props`, trees and props as separate depth-sorted sprites), `venues.js` (amphitheater, stage, screen
+  card and film, café, back farm), `sky.js` (`SKY`, `TINT`, clouds, `glowSprite`), `text.js` (font, `GLYPHS`),
+  `palette.js` (shared material ramps), `shared.js` (caches shared by every card: land, houses, party lights).
+- `content/` — what lives in the village: `moods.js` (`MODES`, `DEFAULT_SCHEDULE`, `scheduleMode`,
+  `DAY_MOODS`), `jobs.js` (`JOBS`, `LOOKS`), `band.js`, `crew-looks.js` (`CREW_LOOKS`), `events/` (one file per
+  event, collected in `events/index.js` → `EVENTS`, plus `eventsForDay`, `EVENT_MODES`, `eventOfMode`).
+- `ha/` — Home Assistant glue: `weather.js` (`readWeather`, `autoWeather`), `reactions.js` (`reactionKind()`,
+  `activatedAt()`, `evalReactions()`), `suggest.js` (`suggestReactions()`), `validate.js` (`validateConfig`).
+- `editor/` — `schema.js` (form schemas, labels, helper text, `MODE_OPTIONS`), `editor.js`
+  (`CompanionVillageCardEditor`, `loadHaComponents`).
+- `card/` — `CompanionVillageCard`. `card.js` holds the class (config, `set hass`, lifecycle, loop, pacing);
+  the other methods live in files by concern as plain objects that `card.js` copies onto the prototype
+  (non-enumerable, like class methods), so every method still uses `this._…` as before: `world.js`
+  (`_initVillage`, time, `_updateMode`, `_onModeChange`), `events.js`, `guests.js` (visitors, mail, band),
+  `animals.js`, `plan.js` (`_plan`, `_think`, `_arrive`), `update.js` (simulation step, particles, weather,
+  clicks), `render.js` (`_render`, land, static items, sky), `screen.js` (screen, film, projector, console),
+  `lights.js` (lights after the tint, `_redrawInFrontOfLights`), `effects.js` (fireflies, particles,
+  weather), `sprites.js` (poses, sprite cache, bubbles). A new method goes in the file of its concern; add a
+  new file to the list in `card.js` only for a genuinely new concern.
+
+### Where to add things
+
+| Adding | Where |
+|---|---|
+| A random event | a file in `content/events/` + one line in `events/index.js` (see "Random events") |
+| A mood | `content/moods.js` (`MODES`), then its behaviour in `card/plan.js` |
+| A resident job / outfit | `content/jobs.js`, behaviour in `card/plan.js` |
+| A pose or animation | `art/villager/anim.js` (+ tools in `tools.js`) |
+| A place in the village | `world/layout.js`, its footprint in `world/nav.js`, its art in `art/` |
+| Scenery art | `art/` (a new file for a new kind of thing), cached; never drawn per frame |
+| A config option | `ha/validate.js`, `editor/schema.js`, read in `card/` |
 
 ## How it hooks into Home Assistant
 
@@ -157,7 +202,7 @@ text stays vague about the setting: no real places and no named consoles, games 
 
 ## Random events (read before adding one)
 
-`EVENTS` (section "random events" in the card file) is the registry; everything else is generated from it:
+`EVENTS` (`content/events/index.js`, one file per event) is the registry; everything else is generated from it:
 the schedule (`eventsForDay`: seeded by date + `seed`, a week of history so the same kind never runs on
 consecutive days), reaction modes (`event:<kind>` in `REACTION_MODES`/`MODE_OPTIONS`/`validateConfig`),
 suggestion words, the editor helper text and the demo's Event buttons. The card side is `_spawnEvents`
@@ -172,7 +217,8 @@ A guest whose plan says "leave" while still off screen is retired in `_think` (`
 it stays `active` forever and an event waiting on its crew never ends.
 
 Adding an event:
-1. A registry entry: label/icon/text, `crew` roles, `weight`, `hours`, `minutes`, `moods`, `suggest` words,
+1. A registry entry (`content/events/<kind>.js`, exported and listed in `events/index.js`; the order there is the
+   order of the schedule's weighted draw, so append new ones at the end): label/icon/text, `crew` roles, `weight`, `hours`, `minutes`, `moods`, `suggest` words,
    optional `setupSecs`/`packSecs`, and hooks (`crewPlan` required; `start`, `instant`, `tick`, `visit`,
    `props`, `blocks`, `lights` + `lightRects` (where those lights are, `[x, y, w, h, depth line, tint?]` in px,
    so people in front get redrawn), `keep`). Put spots on open ground off the NAV paths, away from doors and
@@ -181,7 +227,7 @@ Adding an event:
    hats in `HATS`.
 3. New poses: `KEYS` + `ANIM` + `ACTION_POSE`; tools via `POSE_TOOL`/`drawTool`/`drawCarry`; particles in
    `_actionFx`; glyphs in `GLYPHS`.
-4. Prop art as `make…()` functions in "event props" (cached with `_eventArt`, never per frame).
+4. Prop art as `make…()` functions in the event's own file (cached with `_eventArt`, never per frame).
 5. Lasting changes (like trimmed shrubs) go through per-card overrides, never the shared land props.
 6. README events table row. Check with the bench: each stage's screenshot, nobody/no animal inside
    `blocked()` rects, frame time under ~7 ms at 6× throttle, `eventsForDay` counts, real-HA reaction.
@@ -253,22 +299,30 @@ Rules learned the hard way:
   edge taller; uneven diagonals. Now: small rustic panel, sheared toward the seats with 2:1 stairs.
 - Single round deciduous tree/bush style — replaced by the current conifer, aspen and shrub set.
 
-## Testing (nothing is checked in; recreate as needed)
+## Testing
 
-- Playwright + Chromium against `demo.html` (`file://`). Useful checks used so far:
-  screenshots per mood/time/weather/season; 4× zoomed crops; sprite sheets of poses/animals/foliage
-  (`buildVillager`, `animalSprite`, `makeTree`, `drawShrub` are globals); a stress run timing `_render`;
-  mood transitions (movie/away flows); "walls" (sample walking villagers, assert `!blocked(x, y)`); animal
-  validity (nobody above `HORIZON + 3` or inside footprints); pixel probes for window/fire overlap; the
-  reaction engine with fake states (`evalReactions`, `suggestReactions`).
-- Deterministic before/after checks: a bench page that seeds `Math.random`, fakes `performance.now` and `Date`,
-  steps `_update` without rendering, then renders one frame — lets you pixel-diff a refactor against the old
-  file. Set `card._running = true` (no loop) so event blocks register, and clear `EVENT_BLOCKS` between
-  scenarios (it's shared by every card on the page). Playwright 1.49.1 matches the cached `chromium-1148`.
-- Route fuzz in Node (eval the card file with tiny DOM stubs): random pairs, check every segment with a fine
-  sample against `FOOTPRINTS` + event rects; expect zero failures.
-  Throttle with CDP `Emulation.setCPUThrottlingRate` (6×) and force a flush (`getImageData(0,0,1,1)`) when
-  timing `_render`, or you only measure command recording.
+- **Refactors must be pixel-identical.** `npm run build:dev && node tests/pixel-diff.mjs` renders 43 seeded
+  scenarios (every mood, season × weather, each event's stages, mood transitions, 1 and 10 villagers, southern
+  hemisphere, the real event schedule) with a baseline single-file build from git (`--base <ref>:<path>`,
+  default the last single-file commit) and with `dist/`, and fails on any differing pixel or status line.
+  `--only <name>` filters; `--out <dir>` writes base/current/diff PNGs with a count and bounding box. Each
+  scenario gets a fresh page with `Math.random` seeded and `performance.now`/`Date` faked, and steps
+  `_update`/`_render` directly (`card._running = true`, no loop). Nothing may call `Math.random` at module
+  load, or module order would shift the random stream.
+  `node tests/logic-diff.mjs` compares the building blocks with the baseline: 3000 routes, `freeSpot`,
+  `blocked`, bird spots, a year of `eventsForDay`, seasons, schedule, weather mapping, reactions,
+  suggestions, config errors, every pose/frame sprite, animals, foliage, and the editor's DOM and form data
+  (with stand-in `ha-form` elements). For an intended visual change, move the baseline to the new commit
+  once the change is reviewed.
+- Other useful checks (scripts not kept): screenshots per mood/time/weather/season; 4× zoomed crops; sprite
+  sheets from the dev build (`CompanionVillage.buildVillager`, `animalSprite`, `makeTree`, `drawShrub`); mood
+  transitions; "walls" (sample walking villagers, assert `!blocked(x, y)`); animal validity (nobody above
+  `HORIZON + 3` or inside footprints); pixel probes for window/fire overlap; v1 and v2 on one page.
+- Route fuzz: `world/nav.js` imports cleanly in Node (no DOM needed), so fuzz `route()` directly: random
+  pairs, check every segment with a fine sample against `FOOTPRINTS` + event rects; expect zero failures.
+- Timing: throttle with CDP `Emulation.setCPUThrottlingRate` (6×) and force a flush (`getImageData(0,0,1,1)`)
+  when timing `_render`, or you only measure command recording. At the split: ~3 ms by day, ~8 ms party night.
+- Playwright 1.49.1 (a devDependency) matches the cached `chromium-1148`.
 - Real Home Assistant: `uv venv --python 3.13` + `uv pip install homeassistant pymicro-vad pyspeex-noise`
   (2026.2 worked; without those two the frontend hangs on "Loading data"). Don't use `demo:` (broken deps
   stall `get_services`); use a template weather driven by an `input_text`, plus a few scenes/scripts/helpers;
@@ -276,5 +330,19 @@ Rules learned the hard way:
   and a dedicated storage dashboard over the websocket API (`/lovelace` redirects to the new Home dashboard
   in 2026). Log the browser in by putting `hassTokens` in localStorage. In edit mode, card changes need the
   dialog's Save; then read back with `lovelace/config`.
-- The card file is at `/config/www/pixel-village-card.js` on the user's Pi; bump the resource `?v=` after
-  updates.
+- v1 is at `/config/www/pixel-village-card.js` on the user's Pi; v2 would go next to it as
+  `/config/www/companion-village-card.js` (from `dist/`). Bump the resource `?v=` after updates.
+
+## Backlog (agreed, in order)
+
+1. Thicker winter snowcaps on the mountains, like real life (`snowAmt` in `art/backdrop.js`); snow still only
+   falls when the weather entity says so.
+2. A day context (`core/calendar.js`): season and holidays worked out once per day, with `previewDate`.
+3. `pickWeighted()` in `core/math.js`; an `ACTIVITIES` registry (`content/activities/`) replacing the `_plan`
+   switch, weighted by mood × job × personality × season/holiday.
+4. Villager names and simple personalities (`content/personalities/`, optional `residents:` config): likes
+   (movie, gaming, party…) raise activity weights and trigger an excited beat on mood changes.
+5. Several weighted dances (`dance_<kind>` poses; keyframes may carry legs/spins).
+6. Decor providers: events, holidays and seasons add cached props/lights the same way (`_eventItems` today).
+7. A `HOLIDAYS` registry (`content/holidays/`, fixed / nth-weekday / last-weekday / Easter rules), US by
+   default, `holidays:` and `custom_holidays:` config for other countries.

@@ -35,11 +35,16 @@ Requires Home Assistant 2024.11 or newer.
 3. Edit a dashboard → **Add card** → search for **HA Companion Village**.
 
 ### Manual
-1. Copy `companion-village-card.js` to `/config/www/companion-village-card.js`.
+1. Download `companion-village-card.js` from the latest
+   [release](https://github.com/frankdeluxe5k/companion-village-card/releases) and copy it to
+   `/config/www/companion-village-card.js`.
 2. **Settings → Dashboards → ⋮ → Resources → Add resource**
    URL `/local/companion-village-card.js?v=1`, type **JavaScript module**.
    (Bump `?v=` whenever you update the file so browsers pick up the new version.)
 3. Edit a dashboard → **Add card** → search for **HA Companion Village**.
+
+Already using the original `pixel-village-card`? This card has its own name (`custom:companion-village-card`)
+and file, so both can be installed side by side while you move over.
 
 Nothing else to set up: the card finds your weather entity and the sun on its own, and follows your
 time zone (your profile's "local" or "server" time zone setting is respected).
@@ -217,7 +222,7 @@ some z's float out.
 
 ## Preview
 
-Open `demo.html` in a browser for a time slider, time-lapse, mood buttons, every weather condition and a
+Run `npm run build:dev`, then open `demo.html` in a browser for a time slider, time-lapse, mood buttons, every weather condition and a
 button for each event.
 
 ## Troubleshooting
@@ -227,3 +232,17 @@ button for each event.
 - **An entity in your config doesn't exist?** The card ignores it and logs a warning in the browser
   console (`companion-village-card: these entities don't exist…`).
 - **Manual install not updating?** Bump the `?v=` on the resource URL.
+
+## Building from source
+
+The card is written as ES modules in `src/` and bundled into one file with esbuild:
+
+```sh
+npm ci
+npm run build        # dist/companion-village-card.js
+npm run build:dev    # also the dev build used by demo.html and the tests
+npm run watch        # rebuild on every change
+```
+
+Open `demo.html` after `npm run build:dev` for a standalone preview with a time slider, moods, weather,
+seasons and events. Publishing a GitHub release builds the card and attaches the file HACS installs.
