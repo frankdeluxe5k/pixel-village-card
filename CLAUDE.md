@@ -303,8 +303,9 @@ Rules learned the hard way:
 
 - **Refactors must be pixel-identical.** `npm run build:dev && node tests/pixel-diff.mjs` renders 43 seeded
   scenarios (every mood, season × weather, each event's stages, mood transitions, 1 and 10 villagers, southern
-  hemisphere, the real event schedule) with a baseline single-file build from git (`--base <ref>:<path>`,
-  default the last single-file commit) and with `dist/`, and fails on any differing pixel or status line.
+  hemisphere, the real event schedule) with a baseline and with `dist/`, and fails on any differing pixel or
+  status line. The baseline (`tests/baseline.mjs`) is built from a commit's `src/` (`--base <commit>`, default
+  `DEFAULT_BASE`), or is a single-file card from the pre-split history (`--base 0062655:companion-village-card.js`).
   `--only <name>` filters; `--out <dir>` writes base/current/diff PNGs with a count and bounding box. Each
   scenario gets a fresh page with `Math.random` seeded and `performance.now`/`Date` faked, and steps
   `_update`/`_render` directly (`card._running = true`, no loop). Nothing may call `Math.random` at module
@@ -312,8 +313,8 @@ Rules learned the hard way:
   `node tests/logic-diff.mjs` compares the building blocks with the baseline: 3000 routes, `freeSpot`,
   `blocked`, bird spots, a year of `eventsForDay`, seasons, schedule, weather mapping, reactions,
   suggestions, config errors, every pose/frame sprite, animals, foliage, and the editor's DOM and form data
-  (with stand-in `ha-form` elements). For an intended visual change, move the baseline to the new commit
-  once the change is reviewed.
+  (with stand-in `ha-form` elements). For an intended change in looks or behaviour, review the diffs
+  (`--out`), then move `DEFAULT_BASE` to the commit that made it.
 - Other useful checks (scripts not kept): screenshots per mood/time/weather/season; 4× zoomed crops; sprite
   sheets from the dev build (`CompanionVillage.buildVillager`, `animalSprite`, `makeTree`, `drawShrub`); mood
   transitions; "walls" (sample walking villagers, assert `!blocked(x, y)`); animal validity (nobody above

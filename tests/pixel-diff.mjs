@@ -1,22 +1,22 @@
 // Pixel-for-pixel regression bench: renders the same scenarios with a baseline build of the card and with
 // the current dist/companion-village-card.js, and reports any frame that differs.
 //
-//   npm run build && node tests/pixel-diff.mjs [--base <git ref>] [--only <name substring>] [--out <dir>]
+//   npm run build && node tests/pixel-diff.mjs [--base <commit> | <commit>:<single file>] [--only <name substring>] [--out <dir>]
 //
-// The baseline is the single-file card at a git ref (default: the last single-file commit). Each scenario
+// The baseline is built from a commit (see baseline.mjs; default DEFAULT_BASE there). Each scenario
 // runs in a fresh page with Math.random seeded, performance.now and Date faked, and steps _update/_render
 // directly (no animation loop), so both builds see exactly the same inputs.
 import { chromium } from 'playwright';
-import { execSync } from 'node:child_process';
+import { DEFAULT_BASE, baselineJs } from './baseline.mjs';
 import { readFileSync, mkdirSync, writeFileSync } from 'node:fs';
 
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : d; };
-const BASE = arg('--base', '0062655:companion-village-card.js');
+const BASE = arg('--base', DEFAULT_BASE);
 const ONLY = arg('--only', '');
 const OUT = arg('--out', '');
 const TAG = 'companion-village-card';
 
-const baseJs = execSync(`git show ${BASE}`, { maxBuffer: 1 << 26 }).toString();
+const baseJs = baselineJs(BASE);
 const curJs = readFileSync(process.env.CUR || 'dist/companion-village-card.js', 'utf8');
 
 // ---- scenarios ----

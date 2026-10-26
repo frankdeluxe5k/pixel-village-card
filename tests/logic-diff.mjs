@@ -1,15 +1,15 @@
-// Compares the building blocks of the card with a baseline single-file build: routes, event schedules,
+// Compares the building blocks of the card with a baseline build (see baseline.mjs): routes, event schedules,
 // reactions, suggestions, config errors, every sprite pose and the editor's DOM. Complements pixel-diff.mjs,
 // which only drives whole scenes.
 //
-//   npm run build:dev && node tests/logic-diff.mjs [--base <git ref>]
+//   npm run build:dev && node tests/logic-diff.mjs [--base <commit> | <commit>:<single file>]
 import { chromium } from 'playwright';
-import { execSync } from 'node:child_process';
+import { DEFAULT_BASE, baselineJs } from './baseline.mjs';
 import { readFileSync } from 'node:fs';
 
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : d; };
-const BASE = arg('--base', '0062655:companion-village-card.js');
-const baseJs = execSync(`git show ${BASE}`, { maxBuffer: 1 << 26 }).toString();
+const BASE = arg('--base', DEFAULT_BASE);
+const baseJs = baselineJs(BASE, 'src/dev.js', 'CompanionVillage');
 const devJs = readFileSync('dist/companion-village-card.dev.js', 'utf8');
 
 const NAMES = ['route', 'freeSpot', 'blocked', 'eventsForDay', 'evalReactions', 'suggestReactions', 'validateConfig', 'reactionKind',
@@ -115,7 +115,7 @@ async function run(js, dev) {
   await page.close();
   return { res, errors };
 }
-const [a, b] = await Promise.all([run(baseJs, false), run(devJs, true)]);
+const [a, b] = await Promise.all([run(baseJs, !BASE.includes(':')), run(devJs, true)]); // a single-file base exposes globals
 await browser.close();
 let bad = a.errors.length + b.errors.length;
 [...a.errors, ...b.errors].forEach((e) => console.log('page error:', e));
