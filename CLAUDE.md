@@ -58,7 +58,10 @@ Repo: `github.com/frankdeluxe5k/pixel-village-card` (private; going public for H
 1. **Constants:** moods (`MODES`), schedule, jobs, looks, `HOUSES` (each with its own `base` depth line; derived
    geometry in `h.g`, `h.door`, `h.glass`, `h.lantern`, `h.chimHi`), `PATHS` (village path network), fire,
    well, stump, screen/amphitheater, farm, café, band spots, seats, `FOOTPRINTS`, `NAV` (path graph),
-   `route()` / `freeSpot()` / `blocked()`.
+   `route()` / `freeSpot()` / `blocked()` / `clearPath()` (exact segment-vs-rect test, `segHits`, so paths
+   can't clip a corner between samples). Spots no NAV node can see (behind a house, right in front of a cart)
+   detour via `CORNERS` (static footprint corners) and `eventCorners`; a route that starts inside a footprint
+   steps out to its front first.
 2. **Helpers:** seeded RNG, colour ramps (`ramp()`: hue-shifted 5-step ramps), Bayer dither, value noise,
    `P` (fillRect), `line`, `ellipse`, `fillPoly`, `tpl` (char-template sprites), `outline()` (selective dark
    outline), `flipH`.
@@ -133,8 +136,10 @@ Repo: `github.com/frankdeluxe5k/pixel-village-card` (private; going public for H
 - Moods: sleep, morning, work, meal, evening, party (travelling band, string lights, dancing), movie
   (screen rolls down, popcorn, seats on the tiers), gaming (retro games on the screen with wired
   controllers to a console on the deck, handhelds at the café), cozy (everyone indoors), away (backpacks and
-  walking sticks, last one out hangs "BACK SOON!" on the coffee cart).
-- Events: merchant (hand cart east of the pond), salesman (doors), artists (sculpture by the farm, on show
+  walking sticks, last one out pulls down the amphitheater screen with a "BACK SOON!" card on it,
+  `_sign === 2`; the rigger raises it when they're back). In cozy, visitors go into the tavern (gone at its door).
+- Events: merchant (led in from the west lane with a mule pulling his cart, parked east of the pond with the mule
+  hitched on the east side, away from the pond), salesman (doors), artists (sculpture by the farm, on show
   until bedtime), landscapers (trim shrubs into tidy domes for the day, prune trees from a ladder), fair (tent,
   carousel, ring toss east of the pond, into the evening with lights). About one a day by default.
 - People: 6 residents by default (farmer, cook, woodcutter, water carrier, bard, kid), 8 visitors who come
@@ -153,13 +158,18 @@ suggestion words, the editor helper text and the demo's Event buttons. The card 
 (once a second: preview → reaction → schedule; mood/weather gates in `_eventOk`), `_startEvent` (crew from
 `_makeGuest(role)`, `instant` placement when the card loads mid-event), `_eventStage`, `_buildEvent`
 (setup/packup progress from crew doing `build`), `_eventVisit` (capped onlookers, `plan.onlook`),
-`_eventItems` (props join the depth sort), `EVENT_BLOCKS` (temporary footprints `blocked()` checks; anyone
-standing where one appears re-plans, and `_arrive` re-plans anyone who lands inside one).
+`_eventItems` (props join the depth sort), `EVENT_BLOCKS` (temporary footprints `blocked()` checks, per card
+but shared like `FOOTPRINTS`; always change it through `setEventBlocks`, which refreshes the flat `eventRects`
+list; a card only registers blocks while its loop runs. When blocks appear, anyone standing there re-plans,
+anyone walking through re-routes to the same target, and `_arrive` re-plans anyone who lands inside one).
+A guest whose plan says "leave" while still off screen is retired in `_think` (`_retireGuest`); otherwise
+it stays `active` forever and an event waiting on its crew never ends.
 
 Adding an event:
 1. A registry entry: label/icon/text, `crew` roles, `weight`, `hours`, `minutes`, `moods`, `suggest` words,
    optional `setupSecs`/`packSecs`, and hooks (`crewPlan` required; `start`, `instant`, `tick`, `visit`,
-   `props`, `blocks`, `lights`, `keep`). Put spots on open ground off the NAV paths, away from doors and
+   `props`, `blocks`, `lights` + `lightRects` (where those lights are, `[x, y, w, h, depth line, tint?]` in px,
+   so people in front get redrawn), `keep`). Put spots on open ground off the NAV paths, away from doors and
    benches; reuse `CART_AT`/`SCULPT_AT`/`FAIR_AT` areas or add a constant beside them.
 2. Crew looks in `CREW_LOOKS` (outfit pieces drawn by `drawOutfit`; add a piece there for a new garment),
    hats in `HATS`.
@@ -175,19 +185,27 @@ Adding an event:
 Render order in `_render`:
 1. Sky (pre-divided by the tint), sun, clouds — then the land layer on top, so the sun, clouds and anything
    in the sky sit behind the mountains.
-2. Depth-sorted items by simulation `y`: villagers, animals (non-flying), houses (`y = base + 0.3`), props and
-   trees (`sortY` = their ground line), stage, tables, sign, parked bike, console.
+2. Ground-level details nobody can stand behind (pond sparkle, bunting for now), then depth-sorted items by
+   simulation `y`: villagers, animals (non-flying), houses (`y = base + 0.3`), props and trees (`sortY` = their
+   ground line), stage (with the screen and its BACK SOON card), tables, projector (with its reels), parked
+   bike, console, event props. Every item has `g()` → `[canvas, x, y, mirrored]` (reused per-person records,
+   geometry cached per frame) so the light redraw knows what's in front of what.
 3. Flying birds, then the night tint (`multiply` over everything).
-4. Lights after the tint: windows, lanterns, street lamps, fire, film, party lights. Stars hidden by the
-   mountains are dropped once (`_visStars`); the cached moon sprite is clipped by `_skyMask`.
-5. `_redrawInFrontOfLights`: anyone (villagers and animals) standing in front of a lit window, lantern,
-   lamp or the fire is redrawn on top with the matching tint (warm tint near the fire), so lights never show
-   through them.
+4. Lights after the tint: windows, lanterns, street lamps, café candles, fire, event lights, party bulbs. Stars
+   hidden by the mountains are dropped once (`_visStars`); the cached moon sprite is clipped by `_skyMask`.
+5. `_redrawInFrontOfLights`: anyone (villagers and animals) whose sprite overlaps a light rect with them in
+   front of its depth line, or who is near the fire (inside its glow after dark, warm tint graded by distance;
+   by day only over the flames, untinted) is redrawn on top with the matching tint. Redraws go back to front
+   and each one is cut away (`destination-out`) wherever a nearer item that isn't redrawn covers it (opaque
+   boxes from `outline()`, `opaqueBox`), so lights never show through people and people never cover benches or
+   others in front of them. Props are redrawn too if they could ever stand in front of a light (`lit`, worked
+   out once; none do today). Film, handheld glows, fireflies, particles and bubbles come after it.
 
 Rules learned the hard way:
 - Never bake something into the ground layer if anything can walk behind it — make it a prop sprite with a
   `sortY`.
-- Anything drawn after the tint can paint over sprites in front of it; handle it like windows/fire.
+- Anything drawn after the tint can paint over sprites in front of it; add it before the redraw and give it a
+  rect (like windows, bulbs, `lightRects`), or draw it inside its depth item before the tint (like the reels).
 - Animals and birds must only stand in valid spots (`birdSpot`, `freeSpot`, zones); never in the hills,
   never inside a footprint. Roof-perched birds sort just after their house.
 
@@ -237,8 +255,12 @@ Rules learned the hard way:
   mood transitions (movie/away flows); "walls" (sample walking villagers, assert `!blocked(x, y)`); animal
   validity (nobody above `HORIZON + 3` or inside footprints); pixel probes for window/fire overlap; the
   reaction engine with fake states (`evalReactions`, `suggestReactions`).
-- Deterministic before/after checks: a bench page that seeds `Math.random`, fakes `performance.now`, steps
-  `_update` without rendering, then renders one frame — lets you pixel-diff a refactor against the old file.
+- Deterministic before/after checks: a bench page that seeds `Math.random`, fakes `performance.now` and `Date`,
+  steps `_update` without rendering, then renders one frame — lets you pixel-diff a refactor against the old
+  file. Set `card._running = true` (no loop) so event blocks register, and clear `EVENT_BLOCKS` between
+  scenarios (it's shared by every card on the page). Playwright 1.49.1 matches the cached `chromium-1148`.
+- Route fuzz in Node (eval the card file with tiny DOM stubs): random pairs, check every segment with a fine
+  sample against `FOOTPRINTS` + event rects; expect zero failures.
   Throttle with CDP `Emulation.setCPUThrottlingRate` (6×) and force a flush (`getImageData(0,0,1,1)`) when
   timing `_render`, or you only measure command recording.
 - Real Home Assistant: `uv venv --python 3.13` + `uv pip install homeassistant pymicro-vad pyspeex-noise`

@@ -135,7 +135,7 @@ entries with `state:` to `state`, and everything else to `on`.
 | `movie`   | Movie night at the amphitheater: the screen rolls down, the cook makes popcorn, a projector comes out and everyone takes a seat |
 | `gaming`  | Game night: retro games on the big screen with players on wired controllers, and handheld consoles at the café |
 | `cozy`    | Everyone indoors with warm lit windows and smoking chimneys |
-| `away`    | Everyone grabs a backpack and walking stick and heads off on an adventure. The last one out hangs a "BACK SOON!" sign on the coffee cart, and the first one home takes it down |
+| `away`    | Everyone grabs a backpack and walking stick and heads off on an adventure. The last one out pulls down the amphitheater screen with a "BACK SOON!" sign on it, and it goes back up when the village leaves away mode |
 
 ### Events
 
@@ -144,7 +144,7 @@ Villagers and visitors wander over to watch, and each crew leaves the village as
 
 | event | `mode:` for a reaction | what happens |
 |---|---|---|
-| 🛒 Travelling merchant | `event:merchant` | Hauls a hand cart into the square, unrolls the canopy and sets out fruit, jars and cloth; people browse and buy |
+| 🛒 Travelling merchant | `event:merchant` | Leads his mule and cart in along the west lane, unrolls the canopy and sets out fruit, jars and cloth while the mule grazes; people browse and buy |
 | 💼 Door-to-door salesman | `event:salesman` | Bowler hat and sample case; knocks on doors (someone home might buy, an empty house gets a shrug) and pitches to people in the street |
 | 🎨 Visiting artists | `event:artists` | Three artists chisel and paint a sculpture by the farm, then unveil it; it stays on show until bedtime |
 | ✂️ Landscapers | `event:landscapers` | Trim every shrub into a tidy dome, prune trees from a ladder and wheel the clippings away; the trims last the day |
@@ -198,9 +198,9 @@ the tavern.
 | `visitors` | `true` | Visitors, the mail carrier and the party band |
 | `animals` | `true` | Dogs, cat, birds, rabbits and squirrels |
 | `weather_entity` | first `weather.*` | Set `false` to turn weather off. Every Home Assistant condition is drawn: sun, clear night, clouds, wind, fog, rain, pouring rain, lightning, thunderstorms, hail, snow and sleet. Heavy rain, hail and storms send workers indoors |
-| `sun_entity` | `sun.sun` | Drives dawn, day, dusk, night and the sun's position. Without it the clock decides |
+| `sun_entity` | `sun.sun` | Drives dawn, day, dusk, night and the sun's position. Without it the clock decides. South of the equator (from your Home Assistant location) the sun's path and the seasons follow your hemisphere |
 | `mode_entity` | none | Mood helper (`input_select`, `select` or `input_text`) |
-| `schedule` | 06:30 wake, 08:30 work, 12:00 lunch, 13:00 work, 18:00 dinner, 19:30 evening, 22:30 sleep | `"HH:MM"` strings |
+| `schedule` | 06:30 wake, 08:30 work, 12:00 lunch, 13:00 work, 18:00 dinner, 19:30 evening, 22:30 sleep | `"HH:MM"` strings. A `sleep` earlier than `wake` (e.g. `"00:30"`) means after midnight |
 | `triggers` | `[]` | Reactions, see above |
 | `show_status` | `true` | The one-line caption under the village |
 | `fps` | `15` | 2–30 |
