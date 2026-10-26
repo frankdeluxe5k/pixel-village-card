@@ -101,11 +101,14 @@ export const updateMethods = {
     switch (v.action) {
       case 'chop':
         v.fxT = 0.5;
+        if (v.variant === 'chop_rest') break; // catching their breath
         for (let i = 0; i < 2; i++) this._spawn({ x: STUMP.x, y: STUMP.y - 3, vx: rand(-12, 12), vy: rand(-25, -12), life: 0.6, c: '#d8a868', grav: true, layer: 0 });
         break;
       case 'farm':
-        v.fxT = 0.5;
-        this._spawn({ x: hx + v.face * 2, y: v.y - 1, vx: rand(-6, 6), vy: rand(-14, -8), life: 0.4, c: '#5e3e24', grav: true, layer: 0 });
+        v.fxT = v.variant === 'farm_dig' ? 0.3 : 0.5;
+        // weeding by hand tosses green bits over the shoulder
+        if (v.variant === 'farm_weed') this._spawn({ x: hx + v.face * 2, y: v.y - 3, vx: -v.face * rand(4, 10), vy: rand(-14, -8), life: 0.5, c: pick(['#4a8a2a', '#6aa83a']), grav: true, layer: 0 });
+        else this._spawn({ x: hx + v.face * 2, y: v.y - 1, vx: rand(-6, 6), vy: rand(-14, -8), life: 0.4, c: '#5e3e24', grav: true, layer: 0 });
         break;
       case 'water':
         v.fxT = 0.12;
@@ -144,6 +147,7 @@ export const updateMethods = {
       }
       case 'sweep':
         v.fxT = 0.4;
+        if (v.variant === 'sweep_lean') break;
         this._spawn({ x: hx + v.face * 2, y: v.y, vx: v.face * 6, vy: -3, life: 0.6, c: '#c8b088', layer: 0 });
         break;
       case 'play': case 'perform':
@@ -153,6 +157,34 @@ export const updateMethods = {
       case 'chat':
         v.fxT = rand(1.8, 3);
         v.bubble = Math.random() < 0.15 ? { g: 'heart', c: '#e04060', t: 1.2 } : { g: 'dots', c: '#333', t: 1.2 };
+        if (v.variant === 'chat_laugh') v.bubble = { g: 'note', c: '#e08a20', t: 1.2 };
+        break;
+      case 'cook':
+        v.fxT = v.variant === 'cook_season' ? 0.5 : 1;
+        if (v.variant === 'cook_season') this._spawn({ x: v.x + v.face * 6, y: v.y - 7, vx: rand(-1, 1), vy: 3, life: 0.5, c: pick(['#f4f4f4', '#c8a050']), layer: 0 });
+        else if (v.variant === 'cook_taste' && Math.random() < 0.4) { v.bubble = { g: 'heart', c: '#e04060', t: 1.2 }; v.fxT = 2.5; }
+        break;
+      case 'bounce':
+        v.fxT = 1;
+        if (v.variant === 'kick') { // the ball leaves the foot on step 2 and rolls off a little way
+          v.fxT = 0.1;
+          const st = this._poseOf(v).step;
+          if (st === 2 && !v.kicked) this._spawn({ x: v.x + v.face * 4, y: v.y - 0.5, vx: v.face * 12, vy: 0, life: 0.5, c: '#3a7ad8', ball: true, layer: 1 });
+          v.kicked = st === 2;
+        }
+        break;
+      case 'spintop':
+        v.fxT = rand(3, 6);
+        if (Math.random() < 0.3) v.bubble = { g: 'bang', c: '#d03030', t: 1 };
+        break;
+      case 'yoyo':
+        v.fxT = rand(3, 6);
+        if (Math.random() < 0.25) v.bubble = { g: 'star', c: '#e0a020', t: 1 };
+        break;
+      case 'playfetch': this._fetchFx(v); break;
+      case 'tag':
+        v.fxT = 99;
+        if (Math.random() < 0.5) this._spawn({ x: v.x, y: v.y - 11, vx: 0, vy: -5, life: 1.2, g: 'heart', c: '#ff6080', layer: 1 });
         break;
       case 'dance':
         v.fxT = rand(1.5, 3);
@@ -180,7 +212,8 @@ export const updateMethods = {
       }
       case 'idle':
         v.fxT = rand(1.5, 4);
-        if (Math.random() < 0.5) v.face = -v.face;
+        if (Math.random() < 0.5 && v.variant !== 'idle_look' && v.variant !== 'idle_whistle') v.face = -v.face; // gazers keep looking one way
+        if (v.variant === 'idle_whistle') this._spawn({ x: v.x + v.face * 3, y: v.y - 11, vx: v.face * 2, vy: -5, life: 1.5, g: 'note', c: '#fff4a0', layer: 1 });
         break;
       // event crews
       case 'trim':

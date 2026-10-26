@@ -106,6 +106,27 @@ export function drawTool(g, tool, hx, hy, frame, tt, tb) {
       for (const [x, y, c] of pts) { P(g, x, y, 2, 2, c); P(g, x, y, 1, 1, '#ffffff'); }
       break;
     }
+    case 'yoyo': { // string down from the fingers to the spinning disc
+      const d = Math.min([1, 4, 7, 3][frame] ?? 2, FY - 3 - hy); // never into the ground
+      if (d > 1) P(g, hx + 1, hy + 1, 1, d - 1, '#f4f0e0');
+      P(g, hx, hy + d, 3, 3, '#d83838'); P(g, hx, hy + d, 1, 1, '#ff8a7a'); P(g, hx + 1, hy + d + 1, 1, 1, frame % 2 ? '#ffd040' : '#8a1818');
+      break;
+    }
+    case 'ball': case 'football': { // bounced under the hand, or sitting at the toes before a kick
+      const x = tool === 'ball' ? hx : AX + 5 + frame * 2;
+      const top = hy + 2, mid = Math.round((top + FY - 3) / 2); // in the hand, falling, on the ground, coming back up
+      const y = tool === 'ball' ? Math.min([top, mid, FY - 3, mid][frame] ?? FY - 3, FY - 3) : FY - 3;
+      P(g, x, y, 3, 3, '#3a7ad8'); P(g, x, y, 1, 1, '#9ac4ff'); P(g, x + 1, y + 1, 2, 1, '#f0f0f0');
+      break;
+    }
+    case 'top': { // a little wooden top spinning on the ground in front of the feet
+      const tx = AX + 10, c = frame % 2, a = c ? '#e04848' : '#f0c030', z = c ? '#f0c030' : '#e04848';
+      P(g, tx + 1, FY - 6, 1, 1, '#5a3a20'); // the knob on top
+      P(g, tx - 1, FY - 5, 5, 1, a); P(g, tx - 2, FY - 4, 7, 1, z); P(g, tx - 1, FY - 3, 5, 1, a);
+      P(g, tx, FY - 2, 3, 1, '#8a5a30'); P(g, tx + 1, FY - 1, 1, 1, '#5a3a20');
+      P(g, tx - 2 + c * 5, FY - 4, 1, 1, '#ffffff'); // a glint that swaps sides as it spins
+      break;
+    }
     case 'pour':
       P(g, hx, hy - 2, 7, 5, METAL.m); P(g, hx, hy - 2, 7, 1, METAL.l); P(g, hx, hy, 7, 1, METAL.o);
       P(g, hx + 7, hy - 2, 1, 2, '#5ab0f0');

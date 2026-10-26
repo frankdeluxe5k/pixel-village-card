@@ -51,7 +51,7 @@ stays vague about the setting: no real places and no named consoles, games or ot
     the moving ones each frame; `_poseOf` is cached per frame; café seats are a per-frame map.
   - Left-facing sprites are mirrored at draw time with `setTransform`, not cached twice. Each villager keeps
     at most `SPRITE_CACHE_MAX` sprites; guests drop theirs when they leave.
-  - Land is built by the `buildLandSteps` generator a few ms per frame (`sharedLand(snow, season, budget)`),
+  - Land is built by the `buildLandSteps` generator a few ms per frame (`sharedLand(snow, look, budget)`),
     shared by all cards, with green and snowy variants both kept. `buildLand()` still builds it in one go.
   - The loop stops when the card is off screen (IntersectionObserver), disconnected or the tab is hidden; a
     loop id guards against duplicate loops. `_pace` drops to 10 fps if frames run long.
@@ -81,7 +81,7 @@ things, plus a few one-time setup statements on its own data (house geometry, pa
 
 - `index.js` (element registration, `window.customCards`), `version.js` (`PV_VERSION`), `dev.js` (test build).
 - `core/` — knows nothing about the village: `constants.js` (`W H HORIZON S RW RH HZ OUT DEFAULT_FPS`),
-  `math.js` (`rand pick clamp01 lerp mulberry32 towardX`), `color.js` (`ramp()`: hue-shifted 5-step ramps,
+  `math.js` (`rand pick pickWeighted clamp01 lerp mulberry32 towardX`), `color.js` (`ramp()`: hue-shifted 5-step ramps,
   `skinRamp`, mixing), `noise.js` (Bayer dither, value noise), `pixels.js` (`mk`, `P` = fillRect, `line`,
   `ellipse`, `fillPoly`, `tpl` char-template sprites, `outline()` selective dark outline, `flipH`, `opaqueBox`),
   `time.js` (`parseHour`, `hourToTime`, `dayKey`, `seasonOf`).
@@ -92,7 +92,9 @@ things, plus a few one-time setup statements on its own data (house geometry, pa
   clip a corner between samples). Spots no NAV node can see (behind a house, right in front of a cart) detour
   via `CORNERS` (static footprint corners) and `eventCorners`; a route that starts inside a footprint steps
   out to its front first. `spots.js`: `CAT_SPOTS`, `RABBIT_ZONES`, `TREE_BASES`, `birdSpot()`.
-- `art/` — procedural drawing; callers cache the results. `villager/` (`frame.js` sprite size/anchor,
+- `art/` — procedural drawing; callers cache the results. `villager/` (`frame.js` sprite size/anchor: 49×50,
+  anchor x 24, feet row 42, so a full tool swing fits (tools reach 24 px right and 7 px below the feet); keep
+  `SW = 2·AX + 1`, since mirroring flips around the canvas,
   `head.js` heads/faces/hair/beards/`HATS`, `anim.js` `KEYS`/`ANIM`/`LIFT`/`ACTION_POSE`/`POSE_TOOL`,
   `body.js` limbs/torso/`drawOutfit`, `tools.js` tools/carried things/instruments, `build.js`
   `buildVillager()` + `buildRider()` for the bicycle), `animals.js` (`animalSprite()`), `foliage.js`
@@ -127,6 +129,7 @@ things, plus a few one-time setup statements on its own data (house geometry, pa
 | A mood | `content/moods.js` (`MODES`), then its behaviour in `card/plan.js` |
 | A resident job / outfit | `content/jobs.js`, behaviour in `card/plan.js` |
 | A pose or animation | `art/villager/anim.js` (+ tools in `tools.js`) |
+| Another take on an existing pose | `KEYS` + `ANIM` entries and a row in `VARIANTS` (`anim.js`); effects keyed on `v.variant` in `_actionFx` |
 | A place in the village | `world/layout.js`, its footprint in `world/nav.js`, its art in `art/` |
 | Scenery art | `art/` (a new file for a new kind of thing), cached; never drawn per frame |
 | A config option | `ha/validate.js`, `editor/schema.js`, read in `card/` |
@@ -182,8 +185,23 @@ things, plus a few one-time setup statements on its own data (house geometry, pa
   the rock on the shaded side; never a flat black line, it grabs the eye). Distant forest is drawn as tidy rows of
   conifer tips (`forestTex`) with a spiky top edge and a clean tundra band above, not random speckle. Layers stop at the next layer's top (trees count from the hill line, not their tips). Each layer
   gets more haze with distance; everything frosts when it snows.
-- Foliage: blue spruce, ponderosa pine, aspen groves; Gambel oak, rabbitbrush, juniper, wild rose, sagebrush. Seasons follow the real date (aspens gold in fall, bare in
-  winter, tawny winter grass); snow caps everything when it snows.
+- Foliage: blue spruce, ponderosa pine, aspen groves; Gambel oak, rabbitbrush, juniper, wild rose, sagebrush.
+  Snow caps everything when it snows (that's the weather; the seasons never put snow in the village).
+- Seasons: US calendar starts (Mar 20 / Jun 21 / Sep 22 / Dec 21, flipped south of the equator via
+  `LOOK_STARTS`, all in `core/time.js`), six looks in `SEASON_LOOKS` (`spring-early`, `spring-late`, `summer`, `fall-early`,
+  `fall-late`, `winter`) with `snowpack` (how far down the peaks are white; deepest in early spring),
+  `leaves` (litter 0-2), `bloom` (wildflowers 0-3), `bare` (deciduous leaves gone), `melt`, `blossom`. Art
+  functions take a look key or a plain season name (`lookOf()` maps either); land, trees and shrubs are
+  keyed by look, houses by snow + `decorOf()` (`bloom`, `bare`, `harvest` mums/pumpkins/corn shock,
+  `winter` evergreens/wreaths/balcony swags from December). Gambel oak is bare until May and holds dry
+  brown leaves in late fall; the pond freezes in winter; café umbrellas are furled ('winter'/'bare' decor).
+  Fallen leaves are baked into the ground (flat, nothing stands behind them).
+- Seasonal chores (`card/plan.js`: `_seasonChore`, work mood; shovelling also in the morning): rake into `LEAF_SPOTS`
+  piles (`_piles`, per card, drawn through `_eventItems`; sprites in `art/seasonal.js`), the kid leaps in full piles, fall-early harvest
+  (`v.harvested` → pumpkin crate to the tavern), firewood to every door, sowing in spring; with snowy land
+  shovelling at each house, the snowman at `SNOWMAN_AT` (`_snowman` 0-3, a block through `_eventBlocks`,
+  melts without snow) and snowballs (`_hits` land on the target). Falling leaves are capped particles
+  (`_fallingLeaves`). Chimneys smoke all day when it's cold; three birds hide in winter.
 - Moods: sleep, morning, work, meal, evening, party (travelling band, string lights, dancing), movie
   (screen rolls down, popcorn, seats on the tiers), gaming (retro games on the screen with wired
   controllers to a console on the deck, handhelds at the café), cozy (everyone indoors), away (backpacks and
@@ -199,6 +217,23 @@ things, plus a few one-time setup statements on its own data (house geometry, pa
   belts, white-soled sneakers) playing in front of the tavern, above the string lights over the square.
   Animals: 2 dogs (follow owners, nap at their door), a cat, birds (land only on open ground or roof ridges),
   rabbits, squirrels.
+- Animation variants (`VARIANTS` in `art/villager/anim.js`): base pose → `[[pose, weight], …]`, default first,
+  rarest last (dances: sway/jig/spin; kidplay: hop/twirl; chop: side swing/lean on the axe; farm: dig/weed by
+  hand; sweep and rake; cook: season/taste; chat: wave/laugh; idle: shade the eyes/whistle; guitar and bass:
+  rock/jump; the kid's ball: kick). `_variantOf` (`card/sprites.js`) picks one per plan, re-picks every 6-12 s
+  in long actions (`REROLL`), and never while carrying or wearing a pack. It draws from the villager's own
+  `v.vrng` (`mulberry32` of its seed), not `Math.random`. `BASE_POSE` maps a variant back so tools follow
+  the base. Keyframes may carry `legs` (`[backOff, backLift, frontOff, frontLift]`, as in the walk), `tool`
+  (override, `null` = empty hands) and `turn` (draw the frame mirrored: a spin; `_mirrored(v)` is used for
+  drawing, geometry and blinks).
+- The kid (`_kidPlan`, work and meal): chat, run about (`kidplay`), yo-yo, bounce a ball (or kick it),
+  spinning top, fetch or tag with a dog (activity drawn from `v.vrng`). `_freeDog` borrows the nearest dog on
+  show; `dog.play = { kid, plan, kind, stage }` takes over from following the owner until the kid's plan
+  changes. Fetch: the dog joins, sits beside the kid (`ready`), the kid winds up and throws (`_fetchFx`, a
+  `ball` particle), the dog runs to where it lands (`chase`), brings it back in its mouth and sits again. The
+  ball is part of the dog's sprite (`animalSprite(…, holding)`, 2 px wider each side so it mirrors in place),
+  so the light redraw and depth masks include it. `_playOver` ends a game as soon as the kid moves on, even
+  mid-dash, and a dog holding the ball drops it. Tag runs a few rounds (`v.tagLeft`), the dog at the kid's heels.
 
 ## Random events (read before adding one)
 
@@ -319,6 +354,11 @@ Rules learned the hard way:
   sheets from the dev build (`CompanionVillage.buildVillager`, `animalSprite`, `makeTree`, `drawShrub`); mood
   transitions; "walls" (sample walking villagers, assert `!blocked(x, y)`); animal validity (nobody above
   `HORIZON + 3` or inside footprints); pixel probes for window/fire overlap; v1 and v2 on one page.
+- Animation edge cases (scripts not kept): every pose × frame × job × carry/gear built on an oversized canvas
+  to measure how far art really reaches (the canvas must hold it, or tools get clipped); a long simulation
+  fuzz over every mood × season × weather × event × 1/6/10 villagers asserting no NaN or off-map positions,
+  known poses only, no variant while carrying, dogs never stopped in `blocked()`, dog games released when the
+  kid moves on, thrown balls landing on open ground; a night probe that the held ball survives the light redraw.
 - Route fuzz: `world/nav.js` imports cleanly in Node (no DOM needed), so fuzz `route()` directly: random
   pairs, check every segment with a fine sample against `FOOTPRINTS` + event rects; expect zero failures.
 - Timing: throttle with CDP `Emulation.setCPUThrottlingRate` (6×) and force a flush (`getImageData(0,0,1,1)`)
@@ -339,11 +379,10 @@ Rules learned the hard way:
 1. Thicker winter snowcaps on the mountains, like real life (`snowAmt` in `art/backdrop.js`); snow still only
    falls when the weather entity says so.
 2. A day context (`core/calendar.js`): season and holidays worked out once per day, with `previewDate`.
-3. `pickWeighted()` in `core/math.js`; an `ACTIVITIES` registry (`content/activities/`) replacing the `_plan`
+3. An `ACTIVITIES` registry (`content/activities/`) replacing the `_plan`
    switch, weighted by mood × job × personality × season/holiday.
 4. Villager names and simple personalities (`content/personalities/`, optional `residents:` config): likes
    (movie, gaming, party…) raise activity weights and trigger an excited beat on mood changes.
-5. Several weighted dances (`dance_<kind>` poses; keyframes may carry legs/spins).
-6. Decor providers: events, holidays and seasons add cached props/lights the same way (`_eventItems` today).
-7. A `HOLIDAYS` registry (`content/holidays/`, fixed / nth-weekday / last-weekday / Easter rules), US by
+5. Decor providers: events, holidays and seasons add cached props/lights the same way (`_eventItems` today).
+6. A `HOLIDAYS` registry (`content/holidays/`, fixed / nth-weekday / last-weekday / Easter rules), US by
    default, `holidays:` and `custom_holidays:` config for other countries.

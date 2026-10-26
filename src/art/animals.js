@@ -15,11 +15,14 @@ export const COATS = {
 export const ANIMAL_SIZE = { dog: [20, 16, 10, 13], cat: [18, 14, 9, 11], rabbit: [14, 16, 7, 13], squirrel: [16, 16, 8, 13], bird: [11, 10, 5, 7] };
 export const animalCache = new Map();
 
-export function animalSprite(type, variant, pose, frame) {
-  const key = `${type}|${variant}|${pose}|${frame}`;
+// `holding`: a dog with the kid's ball in its mouth (2 px wider each side, so it stays symmetric about its anchor
+// and mirrors in place like every other sprite).
+export function animalSprite(type, variant, pose, frame, holding = false) {
+  const key = `${type}|${variant}|${pose}|${frame}${holding ? '|b' : ''}`;
   let spr = animalCache.get(key);
   if (spr) return spr;
-  const [w, h, ax, by] = ANIMAL_SIZE[type];
+  let [w, h, ax, by] = ANIMAL_SIZE[type];
+  if (holding) { w += 4; ax += 2; }
   const c = mk(w, h), g = c.getContext('2d'), k = COATS[type][variant];
   const px = (x, y, ww, hh, col) => P(g, ax + x, by + y, ww, hh, col);
   if (type === 'dog') {
@@ -88,6 +91,10 @@ export function animalSprite(type, variant, pose, frame) {
       px(2, peck ? -2 : -4, 2, 2, k.c); px(4, peck ? -1 : -3, 1, 1, '#f0b030'); px(3, peck ? -2 : -4, 1, 1, OUT);
       px(-1, -1, 1, 1, '#c08030'); px(1, -1, 1, 1, '#c08030');
     }
+  }
+  if (holding) { // the ball at the snout
+    const [bx, bry] = pose === 'sit' ? [5, -10] : [8, pose === 'run' ? -8 : -9];
+    px(bx, bry, 3, 3, '#3a7ad8'); px(bx, bry, 1, 1, '#9ac4ff'); px(bx + 2, bry + 2, 1, 1, '#24508a');
   }
   outline(c);
   spr = { cv: c, ax, by };

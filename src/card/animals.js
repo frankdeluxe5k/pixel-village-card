@@ -50,6 +50,7 @@ export const animalMethods = {
     let dogs, threats; // built once a frame, when first needed
     for (const a of this._animals) {
       a.anim = (a.anim || 0) + dt;
+      if (a.play && (a.state === 'walk' || a.state === 'run') && this._playOver(a)) { a.path.length = 0; a.state = 'idle'; } // game over mid-dash
       if (a.state === 'walk' || a.state === 'run' || a.state === 'hop' || a.state === 'fly') {
         const dx = a.tx - a.x, dy = a.ty - a.y, d = Math.hypot(dx, dy), step = a.speed * dt;
         if (Math.abs(dx) > 0.2) a.face = dx > 0 ? 1 : -1;
@@ -72,6 +73,7 @@ export const animalMethods = {
       switch (a.type) {
         case 'dog': {
           const o = a.owner;
+          if (a.play && !this._playOver(a)) { this._dogPlay(a, a.play, a.play.kid); break; } // playing with the kid
           if (o.gone) { a.hidden = a.hidden || (a.x > W + 4 || a.x < -4); if (!a.hidden && a.state !== 'run') this._goAnimal(a, W + 12, ENTRANCE[1] + 1, 20, 'run'); break; }
           if (a.hidden) { a.hidden = false; [a.x, a.y] = freeSpot(o.x + 3, o.y + 1); }
           if (o.inside) {
@@ -168,6 +170,46 @@ export const animalMethods = {
     }
   },
 
+  // Ends a dog's game with the kid once the kid has moved on (new plan, gone in, left); true when it ended.
+  _playOver(a) {
+    const k = a.play.kid;
+    if (!a.hidden && k.plan === a.play.plan && !k.inside && !k.gone) return false;
+    if (a.holding && !a.hidden) { // drops the ball rather than it vanishing from its mouth
+      const sit = a.state === 'sit';
+      this._spawn({ x: a.x + a.face * (sit ? 2.3 : 3.3), y: a.y - (sit ? 3 : 2.7), vx: a.face * 3, vy: -4, life: 0.35, c: '#3a7ad8', ball: true, grav: true, layer: 1 });
+    }
+    a.play = null; a.holding = false; a.t = 0;
+    return true;
+  },
+
+  // The dog's side of fetch and tag (only runs while the dog is standing still; walking is handled above).
+  _dogPlay(a, pl, k) {
+    const p = pl.plan;
+    if (pl.kind === 'tag') { // at the kid's heels
+      const tx = p.x - (k.face || 1) * 4, ty = p.y + 1;
+      if (Math.hypot(tx - a.x, ty - a.y) > 4) { this._goAnimal(a, tx, ty, 24, 'run'); a.rest = 'idle'; }
+      else if (a.t <= 0) { a.state = 'idle'; a.face = k.x > a.x ? 1 : -1; a.t = rand(1, 2); if (Math.random() < 0.3) this._spawn({ x: a.x + a.face * 3, y: a.y - 6, vx: 0, vy: -5, life: 0.8, g: 'bang', c: '#ffffff', layer: 1 }); }
+      return;
+    }
+    const sx = p.x + p.face * 6, sy = p.y + 1.5; // sits beside the kid, looking down the throw
+    switch (pl.stage) {
+      case 'join': case 'return':
+        if (Math.hypot(sx - a.x, sy - a.y) > 1.5) { this._goAnimal(a, sx, sy, pl.stage === 'join' ? 20 : 22, 'run'); a.rest = 'idle'; break; }
+        if (k.walking) { a.state = 'sit'; break; } // waiting for the kid to get there
+        if (pl.stage === 'return') {
+          k.fxT = rand(0.8, 1.6); // the kid takes the ball and throws again
+          if (Math.random() < 0.4) k.bubble = { g: 'heart', c: '#e04060', t: 1.4 };
+        }
+        pl.stage = 'ready'; a.state = 'sit'; a.face = p.face;
+        break;
+      case 'chase': // got it
+        a.holding = true; pl.stage = 'return';
+        this._spawn({ x: a.x + a.face * 3, y: a.y - 6, vx: 0, vy: -5, life: 0.8, g: 'bang', c: '#ffffff', layer: 1 });
+        break;
+      default: a.state = 'sit';
+    }
+  },
+
   _animalPose(a) {
     a.anim ||= 0;
     const f = Math.floor(a.anim * (a.state === 'run' ? 12 : a.state === 'fly' ? 10 : 6) + a.seed * 10);
@@ -184,7 +226,7 @@ export const animalMethods = {
   _animalGeom(a) {
     if (a._geomFrame === this._frameNo && a._geom) return a._geom;
     a._geomFrame = this._frameNo;
-    const [pose, frame] = this._animalPose(a), spr = animalSprite(a.type, a.variant, pose, frame);
+    const [pose, frame] = this._animalPose(a), spr = animalSprite(a.type, a.variant, pose, frame, !!a.holding);
     const lift = a.type === 'bird' ? Math.round((a.alt || 0) * S) : (a.state === 'hop' && frame ? 2 : 0);
     const g = (a._geom ||= [null, 0, 0, false]);
     g[0] = spr.cv; g[1] = Math.round(a.x * S) - spr.ax; g[2] = Math.round(a.y * S) - spr.by - lift; g[3] = a.face < 0;

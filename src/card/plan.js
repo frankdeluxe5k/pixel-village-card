@@ -1,6 +1,6 @@
 // Card: what each villager does next.
-import { HORIZON, S, W } from '../core/constants.js';
-import { pick, rand } from '../core/math.js';
+import { H, HORIZON, S, W } from '../core/constants.js';
+import { mulberry32, pick, pickWeighted, rand } from '../core/math.js';
 import { AMPHI_SEATS, BARISTA, CAFE_SEATS, ENTRANCE, FIRE, HOUSES, LEAF_SPOTS, SNOWMAN_AT, STAGE_SPOT, STUMP, WELL, farmSpot } from '../world/layout.js';
 import { NAV, blocked, freeSpot, route } from '../world/nav.js';
 import { SHRUBS } from '../art/foliage.js';
@@ -92,7 +92,7 @@ export const planMethods = {
         return { ...wander(), action: 'idle', dur: rand(3, 6) };
       case 'meal':
         if (job === 'cook') return cook();
-        if (job === 'child' && r < 0.3) return { ...wander(), action: 'play', dur: rand(2, 4) };
+        if (job === 'child' && r < 0.3) return this._kidPlan(v, { chat, wander });
         if (r < 0.8) return { ...seat(), action: 'eat', dur: rand(8, 16) };
         return chat();
       case 'evening': {
@@ -146,10 +146,71 @@ export const planMethods = {
             if (r < 0.8) return chat();
             return { ...wander(), action: 'idle', dur: rand(3, 6) };
           default: // child
-            if (r < 0.25) return chat();
-            return { ...wander(), action: 'play', dur: rand(2, 4), run: true };
+            return this._kidPlan(v, { chat, wander });
         }
     }
+  },
+
+  /* ----- the kid: toys and games with the dogs ----- */
+
+  _kidPlan(v, { chat, wander }) {
+    v.windup = false; v.throwAt = -9;
+    // a game of tag goes on for a few rounds
+    if (v.tagLeft > 0 && v.dog && !v.dog.hidden && (!v.dog.play || v.dog.play.kid === v)) { v.tagLeft--; return this._tagPlan(v, wander, v.dog); }
+    v.tagLeft = 0;
+    const dog = this._freeDog(v);
+    // drawn from the kid's own stream (like animation variants), so the shared Math.random sequence keeps its order
+    const kind = pickWeighted([['chat', 2], ['run', 2], ['yoyo', 3], ['bounce', 2], ['top', 1], ...(dog ? [['fetch', 2], ['tag', 1]] : [])], (v.vrng ||= mulberry32(Math.floor(v.seed * 4294967296))));
+    switch (kind) {
+      case 'chat': return chat();
+      case 'yoyo': return { ...wander(), action: 'yoyo', dur: rand(6, 12) };
+      case 'bounce': return { ...wander(), action: 'bounce', dur: rand(5, 10) };
+      case 'top': return { ...wander(), action: 'spintop', dur: rand(6, 10) };
+      case 'fetch': {
+        // open grass with room to throw toward the middle of the village
+        const [x, y] = pick([[48, 104], [70, 116], [150, 114], [176, 104], [118, 120]]);
+        const p = { x: x + rand(-3, 3), y: y + rand(-2, 2), face: x < W / 2 ? 1 : -1, action: 'playfetch', dur: rand(14, 24) };
+        dog.play = { kid: v, plan: p, kind: 'fetch', stage: 'join' }; v.dog = dog;
+        return p;
+      }
+      case 'tag': v.tagLeft = 2 + Math.floor(rand(0, 3)); return this._tagPlan(v, wander, dog);
+      default: return { ...wander(), action: 'play', dur: rand(2, 4), run: true };
+    }
+  },
+
+  _tagPlan(v, wander, dog) {
+    const p = { ...wander(), action: 'tag', dur: rand(1, 2), run: true };
+    dog.play = { kid: v, plan: p, kind: 'tag' }; v.dog = dog;
+    return p;
+  },
+
+  // A dog the kid can borrow for a game: on show, not already playing, owner not away.
+  _freeDog(v) {
+    let best = null, bd = Infinity;
+    for (const a of this._animals) {
+      if (a.type !== 'dog' || a.hidden || a.play || a.owner.gone) continue;
+      const d = Math.hypot(a.x - v.x, a.y - v.y);
+      if (d < bd) { bd = d; best = a; }
+    }
+    return best;
+  },
+
+  // Fetch, the kid's side: wind up once the dog is sat ready, then throw the ball out over the grass.
+  _fetchFx(v) {
+    const dog = v.dog, pl = dog?.play;
+    if (!pl || pl.kid !== v || pl.plan !== v.plan) { v.fxT = 99; v.actT = Math.min(v.actT, 1); return; } // lost the dog: move on
+    if (!v.windup) {
+      if (pl.stage !== 'ready') { v.fxT = 0.5; return; }
+      v.windup = true; v.throwAt = this._t; dog.holding = false; v.fxT = 1;
+      return;
+    }
+    v.windup = false; v.fxT = 99;
+    const lx = Math.max(10, Math.min(W - 10, v.x + v.face * rand(14, 22)));
+    const [x, y] = freeSpot(lx, Math.max(HORIZON + 12, Math.min(H - 3, v.y + rand(-3, 3))));
+    const tf = 0.7, sx = v.x + v.face * 3, sy = v.y - 9;
+    this._spawn({ x: sx, y: sy, vx: (x - sx) / tf, vy: (y - 1 - sy - 30 * tf * tf) / tf, life: tf, c: '#3a7ad8', ball: true, grav: true, layer: 1 });
+    pl.stage = 'chase';
+    this._goAnimal(dog, x, y, 26, 'run'); dog.rest = 'idle';
   },
 
   _carrierPlan(v) {

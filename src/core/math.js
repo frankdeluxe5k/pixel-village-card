@@ -15,4 +15,13 @@ export function mulberry32(seed) {
   };
 }
 
+// One item from [[item, weight], …], drawn with `rnd` (a 0..1 generator, Math.random by default).
+export function pickWeighted(list, rnd = Math.random) {
+  let total = 0;
+  for (const [, w] of list) total += w;
+  let r = rnd() * total;
+  for (const [item, w] of list) if ((r -= w) < 0) return item;
+  return list[list.length - 1][0];
+}
+
 export const towardX = (x, cx) => (x < cx ? 1 : -1);

@@ -1,6 +1,6 @@
 // Assembles a villager sprite for a pose and frame (and riders on the bicycle).
 import { SHOE } from '../palette.js';
-import { ANIM, KEYS, POSE_TOOL, SIT_POSES } from './anim.js';
+import { ANIM, BASE_POSE, KEYS, POSE_TOOL, SIT_POSES } from './anim.js';
 import { drawLegs, drawPack, drawSkirt, drawTorso, limb } from './body.js';
 import { AX, FY, SH, SW } from './frame.js';
 import { drawHead } from './head.js';
@@ -17,7 +17,8 @@ export function buildVillager(v, pose, frame, carry, gear) {
   const child = v.small, legLen = child ? 4 : 6, torsoH = child ? 7 : 9;
   const sit = SIT_POSES.has(pose);
   let back = child ? [-1, 5] : [-1, 6], front = child ? [1, 5] : [1, 6], tool = null, bob = 0, dir = null;
-  let legs = [0, 0, 0, 0];
+  let legs = [0, 0, 0, 0], k = null;
+  const base = BASE_POSE[pose] || pose; // a variant uses its base pose's tool
   if (pose === 'walk' || pose === 'pull' || pose === 'push') {
     const ph = (frame / 6) * Math.PI * 2, cs = Math.cos(ph), sn = Math.sin(ph);
     const fo = Math.round(3 * cs);
@@ -28,17 +29,18 @@ export function buildVillager(v, pose, frame, carry, gear) {
     if (pose === 'pull') { front = [-6, 4]; back = [-7, 4]; } // hauling a cart behind
     if (pose === 'push') { front = [6, 4]; back = [5, 4]; } // pushing a barrow ahead
   } else if (ANIM[pose]) {
-    const k = KEYS[ANIM[pose][0]][frame] || KEYS[ANIM[pose][0]][0];
+    k = KEYS[ANIM[pose][0]][frame] || KEYS[ANIM[pose][0]][0];
     if (k.f) front = k.f;
     if (k.b) back = k.b;
+    if (k.legs) legs = k.legs;
     bob = k.bob || 0; dir = k.dir;
   }
   if (child) { front = [front[0], Math.min(front[1], 5)]; back = [back[0], Math.min(back[1], 5)]; }
   const tb = (sit ? FY - 5 : FY - legLen) + bob;
   const tt = tb - torsoH + 1, hy = tt - 12;
   const sb = [AX - 3, tt + 2], sf = [AX + 3, tt + 2];
-  switch (pose) {
-    case 'farm': case 'chop': case 'sign': tool = pose === 'farm' ? 'hoe' : pose === 'chop' ? 'axe' : 'hammer'; break;
+  switch (base) {
+    case 'farm': case 'chop': case 'sign': tool = base === 'farm' ? 'hoe' : base === 'chop' ? 'axe' : 'hammer'; break;
     case 'cook': tool = 'ladle'; break;
     case 'eat': tool = frame === 2 ? 'spoon' : 'bowl'; break;
     case 'watch': tool = 'popcorn'; break;
@@ -50,9 +52,10 @@ export function buildVillager(v, pose, frame, carry, gear) {
     case 'serve': tool = frame === 1 || frame === 2 ? null : 'mug'; break;
     case 'handheld': tool = 'handheld' + (v.id % 2); break;
     case 'controller': tool = 'pad'; break;
-    case 'band_drums': case 'band_bass': case 'band_guitar': tool = pose.slice(5); break;
-    default: if (POSE_TOOL[pose]) tool = POSE_TOOL[pose](frame);
+    case 'band_drums': case 'band_bass': case 'band_guitar': tool = base.slice(5); break;
+    default: { const pt = POSE_TOOL[pose] || POSE_TOOL[base]; if (pt) tool = pt(frame); }
   }
+  if (k && 'tool' in k) tool = k.tool; // a keyframe can put the tool down (weeding by hand)
   if (carry === 'log') { back = [-1, -3]; front = [2, -3]; }
   else if (carry === 'bucket' && pose !== 'water') { front = [1, 6]; tool = 'bucket'; }
   else if (carry === 'sign') { back = [4, 2]; front = [5, 1]; }
@@ -85,7 +88,7 @@ export function buildVillager(v, pose, frame, carry, gear) {
     line(g, hf[0] + 1, hf[1] - 9, hf[0] + 2, FY, '#9a6a3a', 2);
     P(g, hf[0], hf[1] - 11, 3, 3, '#6a4020');
   }
-  if (stick || (tool && !['popcorn', 'lute', 'bowl', 'spoon', 'mug', 'handheld0', 'handheld1', 'pad', 'balls', ...INSTRUMENTS].includes(tool))) {
+  if (stick || (tool && !['popcorn', 'lute', 'bowl', 'spoon', 'mug', 'handheld0', 'handheld1', 'pad', 'balls', 'ball', 'football', 'top', ...INSTRUMENTS].includes(tool))) {
     P(g, hf[0] - 1, hf[1] - 1, 3, 3, skin.m); P(g, hf[0] - 1, hf[1] - 1, 1, 1, skin.l);
   }
   outline(c);

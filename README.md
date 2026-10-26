@@ -135,7 +135,7 @@ entries with `state:` to `state`, and everything else to `on`.
 |-----------|--------------|
 | `sleep`   | Everyone's in bed, windows dark, little z's float from the houses |
 | `morning` | Villagers come out stretching, the cook makes breakfast, smoke from chimneys |
-| `work`    | Farmer tends the field, woodcutter chops and hauls logs, water carrier runs to the well, bard busks, kid plays |
+| `work`    | Farmer tends the field, woodcutter chops and hauls logs, water carrier runs to the well, bard busks, kid plays (toys, fetch with a dog) |
 | `meal`    | Pot over the fire, everyone sits round eating (breakfast / lunch / dinner text depends on the hour) |
 | `evening` | Campfire, chatting, the bard plays, the kid goes to bed early |
 | `party`   | Big fire, string lights, dancing in a ring, and a travelling band |
@@ -186,6 +186,9 @@ umbrella tables and a coffee cart, a rustic amphitheater, a pond, a farm at the 
 the tavern.
 
 - **Residents:** a farmer, cook, woodcutter, water carrier, bard and a kid (more if you raise the count).
+  Nobody repeats one loop forever: dancers sway, jig or (now and then) spin, the woodcutter stops to lean on
+  the axe, the cook tastes the stew, people laugh and wave while they chat. The kid plays with a yo-yo, a
+  ball or a spinning top, and borrows a dog for a game of fetch or tag.
 - **Visitors** wander in by the east road or the west lane, sightsee, grab a coffee, sit by the fire and
   leave again. More turn up for evenings, movie nights and parties; nobody visits at night.
 - **The mail carrier** cycles in every few minutes during the day, parks at two or three houses and
@@ -195,6 +198,37 @@ the tavern.
   front of the tavern.
 - **Animals:** two dogs follow their owners and nap by the door at night, a cat lounges about and bolts
   from the dogs, birds flock and peck, and rabbits and squirrels scatter when anyone comes close.
+
+### Seasons
+
+The seasons follow the date on the usual calendar (spring from March 20, summer from June 21, fall from
+September 22, winter from December 21), and spring and fall each change partway through. South of the
+equator (from your Home Assistant location) they're flipped. Snow in the village itself always comes from
+your weather; the snow on the mountains follows the season.
+
+| Look | Dates | What changes |
+| --- | --- | --- |
+| Early spring | Mar 20 – Apr 30 | Bare aspens with catkins, old snow in the shade, meltwater puddles, the first pasque flowers, freshly turned furrows. The peaks carry the most snow of the year |
+| Late spring | May 1 – Jun 20 | Fresh greens, wild roses in bloom, meadows full of columbine, paintbrush and lupine, seedlings on the farm |
+| Summer | Jun 21 – Sep 21 | Full green, tall crops and sunflowers, lilies on the pond, only a few snowfields left up high |
+| Early fall | Sep 22 – Oct 15 | Golden aspens (some groves still turning), rust-red oaks, rabbitbrush in flower, corn and pumpkins ready to harvest, the first leaves down |
+| Late fall | Oct 16 – Dec 20 | Mostly bare trees, drifts of fallen leaves, tawny grass, stubble and corn shocks, new snow on the peaks |
+| Winter | Dec 21 – Mar 19 | Bare trees, dry grass, a frozen pond, deep snow on the mountains, fewer birds |
+
+The villagers change jobs with the seasons too:
+
+- **Spring:** the farmer sows the garden and the water carrier keeps the seedlings watered; in late spring
+  wildflower seed gets scattered along the fences.
+- **Fall:** neighbours rake the leaves into piles (and the kid jumps in them), the farmer brings in the
+  pumpkins, and the woodcutter stacks firewood at every door. Leaves drift down from the trees.
+- **Winter:** whenever there's snow on the ground, everyone shovels out their front path in the morning and
+  the kid builds a snowman (it melts once the snow's gone) and starts snowball fights. The farmer helps with
+  the firewood, and the chimneys smoke all day.
+- **Decorations:** geraniums in the window boxes from late spring, mums with pumpkins and corn shocks on the
+  stoops in fall, evergreen wreaths and swags from December. The café umbrellas stay furled from December
+  until May.
+
+The demo's Season menu previews each look.
 
 ## All options
 

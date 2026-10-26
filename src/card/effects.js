@@ -24,7 +24,11 @@ export const effectMethods = {
       ctx.globalAlpha = Math.min(1, p.life * 1.5);
       const x = Math.round(p.x * S), y = Math.round(p.y * S);
       if (p.g) this._glyph(ctx, p.g, x, y, p.c);
-      else if (p.grow) {
+      else if (p.ball) { // a thrown or kicked ball: solid, no fade
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = p.c; ctx.fillRect(x - 1, y - 1, 3, 3);
+        ctx.fillStyle = '#9ac4ff'; ctx.fillRect(x - 1, y - 1, 1, 1);
+      } else if (p.grow) {
         const r = Math.max(1, Math.min(5, 1 + Math.floor((3.5 - p.life) * 1.5)));
         ctx.drawImage(puffs[r], x - r - 1, y - r - 1);
       } else {

@@ -1,11 +1,15 @@
 // Card: villager poses, sprite caching and bubbles.
 import { GLYPHS, glyphSprite } from '../art/text.js';
-import { ACTION_POSE, ANIM, LIFT } from '../art/villager/anim.js';
+import { ACTION_POSE, ANIM, KEYS, LIFT, VARIANTS } from '../art/villager/anim.js';
 import { buildVillager } from '../art/villager/build.js';
 import { AX, FY, SW } from '../art/villager/frame.js';
 import { skinRamp } from '../core/color.js';
 import { OUT, S } from '../core/constants.js';
 import { P } from '../core/pixels.js';
+import { mulberry32, pickWeighted } from '../core/math.js';
+
+// long actions pick a fresh variant every so often (a woodcutter stops for a breather, then chops on)
+const REROLL = new Set(['chop', 'farm', 'sweep', 'rake', 'cook', 'band_guitar', 'band_bass', 'bounce']);
 
 export const SPRITE_CACHE_MAX = 64; // per villager; the least recently drawn poses are dropped first
 export const spriteMethods = {
@@ -54,9 +58,32 @@ export const spriteMethods = {
     }
     if (pose === 'walk' && v.pulling) pose = 'pull';
     else if (pose === 'walk' && v.pushing) pose = 'push';
-    const [, rate, order] = ANIM[pose];
+    if (act === 'playfetch') { // the throw plays once from its start, then the kid waits for the dog
+      const since = this._t - (v.throwAt ?? -9);
+      if (since < 2) {
+        const [, rate, order] = ANIM.throwball, step = Math.min(order.length - 1, Math.floor(since * rate));
+        return { pose: 'throwball', frame: order[step], step };
+      }
+      pose = 'idle';
+    }
+    if (VARIANTS[pose]) pose = this._variantOf(v, pose);
+    const [keys, rate, order] = ANIM[pose];
     const step = Math.floor(this._t * rate + v.seed * 10) % order.length;
-    return { pose, frame: order[step], step };
+    const frame = order[step];
+    return { pose, frame, step, flip: !!(keys && KEYS[keys][frame]?.turn) };
+  },
+
+  // Which take on a base pose this villager is playing: picked when the action starts, re-picked now and then
+  // in long ones. Uses the villager's own random stream, so the shared Math.random sequence is untouched.
+  _variantOf(v, base) {
+    if (v.carry || v.gear) return base;
+    if (v.varBase !== base || v.varPlan !== v.plan || (v.varAt && this._t >= v.varAt)) {
+      const rnd = (v.vrng ||= mulberry32(Math.floor(v.seed * 4294967296)));
+      v.varBase = base; v.varPlan = v.plan;
+      v.variant = pickWeighted(VARIANTS[base], rnd);
+      v.varAt = REROLL.has(base) ? this._t + 6 + rnd() * 6 : 0;
+    }
+    return v.variant;
   },
 
   // A villager's sprite for this frame: built on first use, kept in a small per-person cache.
@@ -89,24 +116,29 @@ export const spriteMethods = {
     if (!spr) return null;
     v._geomFrame = this._frameNo;
     const g = (v._geom ||= [null, 0, 0, false]);
-    g[0] = spr.cv; g[1] = Math.round(v.x * S) - AX; g[2] = Math.round(v.y * S) - FY - this._lift(v) * S; g[3] = v.face < 0;
+    g[0] = spr.cv; g[1] = Math.round(v.x * S) - AX; g[2] = Math.round(v.y * S) - FY - this._lift(v) * S; g[3] = this._mirrored(v);
     return g;
   },
 
+  // left-facing, or mid-spin (a `turn` keyframe flips the sprite)
+  _mirrored(v) {
+    return (v.face < 0) !== !!this._poseOf(v).flip;
+  },
+
   _drawVillager(ctx, v) {
-    const spr = this._spriteOf(v, true);
+    const spr = this._spriteOf(v, true), mir = this._mirrored(v);
     const x = Math.round(v.x * S), y = Math.round(v.y * S);
     ctx.fillStyle = 'rgba(16,16,40,0.3)';
     ctx.fillRect(x - 5, y - 1, 11, 3); ctx.fillRect(x - 7, y, 15, 1);
     const sx = x - AX, sy = y - FY - this._lift(v) * S;
-    if (v.face > 0) ctx.drawImage(spr.cv, sx, sy);
+    if (!mir) ctx.drawImage(spr.cv, sx, sy);
     else {
       // mirror at draw time instead of caching a flipped copy of every frame
       ctx.setTransform(-1, 0, 0, 1, sx + SW, sy); ctx.drawImage(spr.cv, 0, 0); ctx.setTransform(1, 0, 0, 1, 0, 0);
     }
     if ((this._t + v.seed * 7) % 4 < 0.15) {
       for (const [x, y] of spr.eyes) {
-        const ex = v.face > 0 ? sx + x : sx + SW - 2 - x;
+        const ex = !mir ? sx + x : sx + SW - 2 - x;
         P(ctx, ex, sy + y, 2, 2, v.look.skin);
         P(ctx, ex, sy + y + 1, 2, 1, skinRamp(v.look.skin).d);
       }
