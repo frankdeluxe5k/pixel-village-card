@@ -64,9 +64,11 @@
     <p class="hint">In Home Assistant, the time comes from your server clock, and scenes come from whatever entities you map in the card config.</p>
   </div>
 </main>
-<script src="companion-village-card.js"></script>
+<!-- npm run build:dev first; the dev build also exposes the card's internals (EVENTS for the buttons below) -->
+<script src="dist/companion-village-card.dev.js"></script>
 <script>
   const card = document.getElementById('card');
+  const { EVENTS } = window.CompanionVillage;
   const states = {
     'weather.home': { state: 'sunny', attributes: {} },
     'input_select.village_mode': { state: 'auto', attributes: {} },
