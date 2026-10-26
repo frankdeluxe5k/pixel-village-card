@@ -5,8 +5,10 @@ follow a daily routine, visitors come and go, animals wander, and the whole scen
 day, the weather, the season and whatever is happening in the user's home (scenes, scripts, any entity).
 It's meant to be shared and to work across many different Home Assistant setups, not just one.
 
-Repo: `github.com/frankdeluxe5k/pixel-village-card` (private; going public for HACS). Commit as `frankdeluxe5k`
-(`89476351+frankdeluxe5k@users.noreply.github.com`). Only commit or push when the user asks.
+Repo: `github.com/frankdeluxe5k/pixel-village-card` (public since v2.2.0, installable through HACS as a
+custom repository). Commit as `frankdeluxe5k` (`89476351+frankdeluxe5k@users.noreply.github.com`). Only commit
+or push when the user asks. Everything pushed is public: commit messages, CLAUDE.md and history included, so
+keep them free of real places, named inspirations and anything personal.
 
 The display name is "HA Companion Village", but the element type (`custom:pixel-village-card`), the file name, class
 names and repo URL keep the old name on purpose so existing dashboards and HACS installs keep working. Public
@@ -21,8 +23,9 @@ text stays vague about the setting: no real places and no named consoles, games 
 - `README.md` — user docs (install, editor, reaction conditions, YAML, moods, options).
 - `hacs.json` — HACS metadata (type Dashboard / category `plugin`, minimum HA 2024.11 for `getGridOptions`).
 - `LICENSE` (MIT), `images/` (README screenshots, rendered from the demo), `.github/workflows/validate.yml`
-  (`hacs/action` + `node --check`). HACS only works with public repos and wants a GitHub release, a repo
-  description, topics and issues enabled; keep `PV_VERSION` equal to the release tag.
+  (`hacs/action` + `node --check`). HACS needs the repo public, a GitHub release, a repo description, topics
+  and issues enabled (all in place). Releases are tagged `v<PV_VERSION>` (e.g. `v2.2.0`) with
+  `pixel-village-card.js` attached; bump `PV_VERSION` before tagging a new one.
 
 ## Hard requirements
 
