@@ -1,12 +1,16 @@
-# Pixel Village Card
+# HA Companion Village
 
-A Home Assistant Lovelace custom card that draws a living 16-bit pixel-art mountain village. Residents
+A Home Assistant Lovelace custom card that draws a living retro pixel-art village. Residents
 follow a daily routine, visitors come and go, animals wander, and the whole scene reacts to the time of
 day, the weather, the season and whatever is happening in the user's home (scenes, scripts, any entity).
 It's meant to be shared and to work across many different Home Assistant setups, not just one.
 
 Repo: `github.com/frankdeluxe5k/pixel-village-card` (private; going public for HACS). Commit as `frankdeluxe5k`
 (`89476351+frankdeluxe5k@users.noreply.github.com`). Only commit or push when the user asks.
+
+The display name is "HA Companion Village", but the element type (`custom:pixel-village-card`), the file name, class
+names and repo URL keep the old name on purpose so existing dashboards and HACS installs keep working. Public
+text stays vague about the setting: no real places and no named consoles, games or other inspirations.
 
 ## Files
 
@@ -119,19 +123,18 @@ Repo: `github.com/frankdeluxe5k/pixel-village-card` (private; going public for H
 - Amphitheater at the front left: low turf terraces with fieldstone faces and log benches, painted onto
   the ground (no outline); a small rustic screen panel turned ~45° toward the seats, partly off the left
   edge, on an angled deck; projector behind the back row; bushes hide the deck's left corner.
-- Backdrop (`paintBackdrop`, a generator inside `buildLandSteps`), back to front: the Continental Divide
-  (hazy, jagged ridgelines from asymmetric cones; a flat-topped Longs-like massif with a sheer east face; faceted
+- Backdrop (`paintBackdrop`, a generator inside `buildLandSteps`), back to front: the far range
+  (hazy, jagged ridgelines from asymmetric cones; a flat-topped massif with a sheer east face; faceted
   rock from ridged noise lit from the left, warm granite patches; snow above a ragged snowline, mostly in
   gullies, deeper in winter/spring); a nearer granite range (rock, tundra band, forest below a ragged
-  treeline); forested foothills with meadows and four Flatirons-style sandstone slabs; a forest edge of
+  treeline); forested foothills with meadows and four tilted sandstone slabs; a forest edge of
   spruce/fir spires, flat-crowned ponderosa and aspen groves (two rows, gold in fall, bare in winter); the
   meadow. Snow is by altitude only (a ragged snowline per range, tongues down the gullies), never a rim along
   ridgelines; every range has a selective 1 px silhouette outline (a pale rim on sunlit western flanks, a deeper shade of
   the rock on the shaded side; never a flat black line, it grabs the eye). Distant forest is drawn as tidy rows of
   conifer tips (`forestTex`) with a spiky top edge and a clean tundra band above, not random speckle. Layers stop at the next layer's top (trees count from the hill line, not their tips). Each layer
   gets more haze with distance; everything frosts when it snows.
-- Foliage themed on the Colorado Front Range: blue spruce, ponderosa pine, aspen groves; Gambel oak,
-  rabbitbrush, juniper, wild rose, sagebrush. Seasons follow the real date (aspens gold in fall, bare in
+- Foliage: blue spruce, ponderosa pine, aspen groves; Gambel oak, rabbitbrush, juniper, wild rose, sagebrush. Seasons follow the real date (aspens gold in fall, bare in
   winter, tawny winter grass); snow caps everything when it snows.
 - Moods: sleep, morning, work, meal, evening, party (travelling band, string lights, dancing), movie
   (screen rolls down, popcorn, seats on the tiers), gaming (retro games on the screen with wired
@@ -211,10 +214,10 @@ Rules learned the hard way:
 
 ## Art direction and preferences
 
-- 16-bit SNES / Neo Geo look, Metal Slug as the influence: chunky dark outlines, hue-shifted shading, dense
-  detail. Don't make houses or people too small (camera was pulled back once, ~15%, and that's the limit).
-- Faces (Stardew Valley / modern indie as the reference): 3/4 head with a jaw and chin, two eyes (white +
-  dark lid pixel + iris colour), brows, shaded nose, mouth. Per-person traits from `faceOf(v)` (eye, iris,
+- Retro pixel art: chunky dark outlines, hue-shifted shading, dense detail. Don't make houses or people too
+  small (camera was pulled back once, ~15%, and that's the limit).
+- Faces: 3/4 head with a jaw and chin, two eyes (white + dark lid pixel + iris colour), brows, shaded nose,
+  mouth. Per-person traits from `faceOf(v)` (eye, iris,
   brow, mouth, nose, blush, freckles, glasses, mustache) drawn by `drawHead`. Skin uses `skinRamp()`, not
   `ramp()` (the hue-shifted ramp turned light skin red). Avoid generic round faces and big cheek spots.
 - Characters: chibi, detailed faces/outfits, multi-frame keyframed animations (6-frame walk, 4-frame
@@ -228,7 +231,7 @@ Rules learned the hard way:
 ## Tried and rejected
 
 - A Home Assistant add-on/container — a browser card is lighter; there's no server process.
-- Original 192×108, 9 px villagers — replaced by the 16-bit 3× art pass.
+- Original 192×108, 9 px villagers — replaced by the 3× art pass.
 - Timber-framed plaster houses, then houses with too much stone on the front — now low stone footing + logs.
 - Dithered, rough clouds.
 - All houses in a straight row on a straight road; then a uniform S-shaped "squiggle" road. Now a realistic
@@ -245,7 +248,7 @@ Rules learned the hard way:
 - Amphitheater versions: a big red velvet curtained stage (gaudy); large outlined stone tiers (looked like a
   sticker, overlapped the road); a flat front-facing screen; a first "45°" attempt that only stretched one
   edge taller; uneven diagonals. Now: small rustic panel, sheared toward the seats with 2:1 stairs.
-- Single round deciduous tree/bush style — replaced by Front Range species.
+- Single round deciduous tree/bush style — replaced by the current conifer, aspen and shrub set.
 
 ## Testing (nothing is checked in; recreate as needed)
 

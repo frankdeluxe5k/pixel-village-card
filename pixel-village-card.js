@@ -1,11 +1,11 @@
 /*
- * Pixel Village Card for Home Assistant
+ * HA Companion Village for Home Assistant
  * A tiny living pixel-art village that follows the time of day, the weather
  * and whatever is happening in your home (scenes, media players, alarm...).
  *
  * Everything is drawn procedurally: no image files, no dependencies.
  * The simulation runs on a 224x126 grid; art is drawn at 3x (672x378) in a
- * 16-bit arcade style. Sprites and scenery are rendered once and cached, and
+ * retro pixel-art style. Sprites and scenery are rendered once and cached, and
  * the card only animates while it is actually on screen.
  */
 const PV_VERSION = '2.2.0';
@@ -445,7 +445,7 @@ function shiftColor(hex, dl, hueTarget, hueAmt, ds = 0) {
   return hslToHex(toward(h, hueTarget, hueAmt), s + ds, l + dl);
 }
 
-// 16-bit style colour ramp: shadows drift toward blue/purple, highlights toward yellow.
+// Retro-style colour ramp: shadows drift toward blue/purple, highlights toward yellow.
 const rampCache = new Map();
 function ramp(hex) {
   let r = rampCache.get(hex);
@@ -1532,7 +1532,7 @@ function buildRider(v, frame, carry) {
   return { cv: c, eyes, top: hy - 6 };
 }
 
-/* ---------- foliage: Colorado Front Range trees and shrubs ---------- */
+/* ---------- foliage: trees and shrubs ---------- */
 
 // south = the southern hemisphere, where the seasons run six months apart
 function seasonOf(d = new Date(), south = false) {
@@ -1588,7 +1588,7 @@ function paintClusters(w, h, clusters, pal, { seed = 1, noise = 0.3, spiky = 0, 
   return c;
 }
 
-// Colorado blue spruce: tiers of drooping, silvery blue-green boughs.
+// Blue spruce: tiers of drooping, silvery blue-green boughs.
 function drawSpruce(size, seed, snow) {
   const H = Math.round(size * S * 3.3), W = Math.round(size * S * 1.7), w = W + 8, h = H + 10;
   const c = mk(w, h), g = c.getContext('2d'), im = g.createImageData(w, h), d = im.data;
@@ -1703,7 +1703,7 @@ function makeTree(kind, size, seed, snow, season) {
   return drawAspens(size, seed, snow, season);
 }
 
-// Front Range shrubs, drawn straight into a prop sprite.
+// Shrubs, drawn straight into a prop sprite.
 // Shrubs around the village (render px): kind, x, ground y, size.
 const SHRUBS = [
   ['gambel', 156, 334, 6], ['rabbit', 376, 340, 6], ['juniper', 424, 376, 7], ['rose', 508, 376, 6], ['sage', 250, 288, 5],
@@ -2076,11 +2076,11 @@ function drawWoodpile(g, snow) {
   if (snow) { P(g, lx + 5, ly - 21, 9, 2, '#ffffff'); P(g, lx - 4, ly - 13, 6, 1, '#ffffff'); P(g, lx + 18, ly - 13, 5, 1, '#ffffff'); }
 }
 
-// The backdrop, after the Colorado Front Range, painted back to front:
-//   1. the Continental Divide: hazy, jagged, a flat-topped Longs-like massif with a sheer east face, snowfields
+// The backdrop, painted back to front:
+//   1. the far range: hazy, jagged, a flat-topped massif with a sheer east face, snowfields
 //      lying in the gullies above the snowline;
 //   2. a nearer granite range: rock above treeline, a band of tundra, dark forest below;
-//   3. forested foothills with meadows and a few Flatirons-style sandstone slabs;
+//   3. forested foothills with meadows and a few tilted sandstone slabs;
 //   4. a forest edge of spruce/fir spires, ponderosa and aspen groves (two rows for depth);
 //   5. the rolling meadow in front of the village.
 // Every layer fills down to the horizon, so each one only paints the rows above the next one's top.
@@ -2349,7 +2349,7 @@ function* buildLandSteps(snow, season = 'summer') {
 
   // ground: grass, cobbled street, flagstone square, pond and farm soil
   const pale = (arr) => (snow ? arr.map((c) => c.map((v) => v + (255 - v) * 0.3)) : arr);
-  // Front Range grass: green through summer, golden in fall, dry and tawny in a snowless winter
+  // Grass: green through summer, golden in fall, dry and tawny in a snowless winter
   const grass = C(snow ? ['#bccbe0', '#d4e0ee', '#e8f0f8', '#ffffff']
     : season === 'fall' ? ['#56783a', '#709040', '#8ea64c', '#acb85e']
       : season === 'winter' ? ['#6a6a44', '#84804e', '#9e9460', '#b8aa74'] : ['#468434', '#5a9e40', '#70b44c', '#88c85c']);
@@ -2596,7 +2596,7 @@ function* buildLandSteps(snow, season = 'summer') {
 }
 
 // Puffy cumulus: a row of overlapping domes on a flat base, lit from the upper left
-// and shaded in clean bands (no dithering) for a smooth arcade look.
+// and shaded in clean bands (no dithering) for a smooth look.
 function makeCloud(w, seed, pal) {
   const rnd = mulberry32(seed);
   const n = 3 + Math.round(w / 22), cl = [];
@@ -4244,7 +4244,7 @@ class PixelVillageCard extends HTMLElement {
       </style>
       <ha-card>
         <div class="title"></div>
-        <canvas width="${RW}" height="${RH}" role="img" aria-label="Pixel village"></canvas>
+        <canvas width="${RW}" height="${RH}" role="img" aria-label="Village"></canvas>
         <div class="status"></div>
       </ha-card>`;
     this._title = root.querySelector('.title');
@@ -4480,7 +4480,7 @@ class PixelVillageCard extends HTMLElement {
     if (status !== this._statusText) {
       this._statusText = status;
       this._status.textContent = status;
-      this._canvas.setAttribute('aria-label', `Pixel village: ${label}. ${text}`);
+      this._canvas.setAttribute('aria-label', `Village: ${label}. ${text}`);
     }
     this._warnMissing();
   }
@@ -5994,7 +5994,7 @@ class PixelVillageCard extends HTMLElement {
     }
   }
 
-  // Retro games on the big screen: a platformer, a racer and a game of pong.
+  // Retro games on the big screen: a platformer, a racer and a paddle game.
   _drawGame(ctx, X, Y) {
     const t = this._t, sc = Math.floor(t / 8) % 3, fr = Math.floor(t * 8) % 2;
     ctx.save();
@@ -6435,10 +6435,10 @@ if (!customElements.get('pixel-village-card')) {
   window.customCards = window.customCards || [];
   window.customCards.push({
     type: 'pixel-village-card',
-    name: 'Pixel Village',
+    name: 'HA Companion Village',
     description: 'A tiny pixel-art village that lives along with your home.',
     preview: true,
     documentationURL: 'https://github.com/frankdeluxe5k/pixel-village-card',
   });
-  console.info(`%c PIXEL-VILLAGE-CARD %c v${PV_VERSION} `, 'background:#3f9a50;color:#fff;border-radius:3px 0 0 3px', 'background:#2c3a70;color:#fff;border-radius:0 3px 3px 0');
+  console.info(`%c HA-COMPANION-VILLAGE %c v${PV_VERSION} `, 'background:#3f9a50;color:#fff;border-radius:3px 0 0 3px', 'background:#2c3a70;color:#fff;border-radius:0 3px 3px 0');
 }

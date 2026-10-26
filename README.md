@@ -1,14 +1,16 @@
-# Pixel Village Card
+# HA Companion Village
 
 A tiny living pixel-art village for your Home Assistant dashboard. Villagers wake up, cook breakfast,
 farm, chop wood, haul water, gather round the campfire, throw parties and go to bed, all following
 your home's clock, the weather, and whatever is happening in your house.
 
+![HA Companion Village](images/village.gif)
+
 ![A sunny day in the village](images/village-day.png)
 ![A party night with the band, string lights and the campfire](images/village-party.png)
 
-- **16-bit arcade look.** Chunky outlined sprites, hue-shifted shading, dithered skies, shingled
-  chalets, snow-capped mountains, all drawn procedurally at 672×378 in the spirit of SNES / Neo Geo art.
+- **Retro pixel-art look.** Chunky outlined sprites, hue-shifted shading and dithered skies, all drawn
+  procedurally at 672×378 in a retro art style.
 - **Reacts to your home.** Scenes, scripts, automations, buttons, switches, media players, people,
   alarms, sensors: tie any of them to a village mood.
 - **Visual editor.** Set everything up from the card's configuration screen, with suggestions based on
@@ -28,16 +30,16 @@ Requires Home Assistant 2024.11 or newer.
 1. In HACS → ⋮ → **Custom repositories**, add `https://github.com/frankdeluxe5k/pixel-village-card`
    as type **Dashboard**. Or use this link:
    [![Open in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=frankdeluxe5k&repository=pixel-village-card&category=plugin)
-2. Download **Pixel Village Card**. HACS adds the dashboard resource for you
+2. Download **HA Companion Village**. HACS adds the dashboard resource for you
    (`/hacsfiles/pixel-village-card/pixel-village-card.js`) and tells you when there's an update.
-3. Edit a dashboard → **Add card** → search for **Pixel Village**.
+3. Edit a dashboard → **Add card** → search for **HA Companion Village**.
 
 ### Manual
 1. Copy `pixel-village-card.js` to `/config/www/pixel-village-card.js`.
 2. **Settings → Dashboards → ⋮ → Resources → Add resource**
    URL `/local/pixel-village-card.js?v=1`, type **JavaScript module**.
    (Bump `?v=` whenever you update the file so browsers pick up the new version.)
-3. Edit a dashboard → **Add card** → search for **Pixel Village**.
+3. Edit a dashboard → **Add card** → search for **HA Companion Village**.
 
 Nothing else to set up: the card finds your weather entity and the sun on its own, and follows your
 time zone (your profile's "local" or "server" time zone setting is respected).
@@ -174,7 +176,7 @@ daily routine. Reactions take priority over the mood helper.
 
 ## The village
 
-Six chalets along a cobbled main road and dirt paths, a fire square with benches and lamps, a café with
+Six houses along a cobbled main road and dirt paths, a fire square with benches and lamps, a café with
 umbrella tables and a coffee cart, a rustic amphitheater, a pond, a farm at the back and a well behind
 the tavern.
 
