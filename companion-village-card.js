@@ -8,7 +8,7 @@
  * retro pixel-art style. Sprites and scenery are rendered once and cached, and
  * the card only animates while it is actually on screen.
  */
-const PV_VERSION = '2.2.0';
+const PV_VERSION = '3.0.0';
 
 const W = 224, H = 126, HORIZON = 60; // simulation units
 const S = 3, RW = W * S, RH = H * S, HZ = HORIZON * S; // render pixels
@@ -3751,7 +3751,7 @@ function loadHaComponents() {
 
 const stableJson = (v) => JSON.stringify(v, (k, x) => (x && typeof x === 'object' && !Array.isArray(x) ? Object.fromEntries(Object.keys(x).sort().map((key) => [key, x[key]])) : x));
 
-class PixelVillageCardEditor extends HTMLElement {
+class CompanionVillageCardEditor extends HTMLElement {
   setConfig(config) {
     // HA hands back every config we emit; rebuilding then would steal focus mid-typing.
     if (this._ready && this._emitted && stableJson(config) === this._emitted) return;
@@ -4123,9 +4123,9 @@ const SPRITE_CACHE_MAX = 64; // per villager; the least recently drawn poses are
 
 /* ---------- the card ---------- */
 
-class PixelVillageCard extends HTMLElement {
+class CompanionVillageCard extends HTMLElement {
   static getConfigElement() {
-    return document.createElement('pixel-village-card-editor');
+    return document.createElement('companion-village-card-editor');
   }
 
   static getStubConfig(hass) {
@@ -4195,7 +4195,7 @@ class PixelVillageCard extends HTMLElement {
     this._warned = true;
     // the default sun.sun only counts if the user picked it; without it the card uses the clock
     const missing = this._watched().filter((e) => !states[e] && !(e === 'sun.sun' && !this._userSun));
-    if (missing.length) console.warn(`pixel-village-card: these entities don't exist in Home Assistant: ${missing.join(', ')}`);
+    if (missing.length) console.warn(`companion-village-card: these entities don't exist in Home Assistant: ${missing.join(', ')}`);
   }
 
   getCardSize() {
@@ -4301,7 +4301,7 @@ class PixelVillageCard extends HTMLElement {
       this._pace(performance.now() - t0);
     } catch (e) {
       // keep the village running through a bad frame, and say so once
-      if (!this._crashed) { this._crashed = true; console.error('pixel-village-card:', e); }
+      if (!this._crashed) { this._crashed = true; console.error('companion-village-card:', e); }
     }
     this._timer = setTimeout(() => { this._raf = requestAnimationFrame(() => this._tick(loop)); }, 1000 / Math.min(this._fps(), this._fpsCap || 30));
   }
@@ -6429,16 +6429,16 @@ class PixelVillageCard extends HTMLElement {
 
 }
 
-if (!customElements.get('pixel-village-card-editor')) customElements.define('pixel-village-card-editor', PixelVillageCardEditor);
-if (!customElements.get('pixel-village-card')) {
-  customElements.define('pixel-village-card', PixelVillageCard);
+if (!customElements.get('companion-village-card-editor')) customElements.define('companion-village-card-editor', CompanionVillageCardEditor);
+if (!customElements.get('companion-village-card')) {
+  customElements.define('companion-village-card', CompanionVillageCard);
   window.customCards = window.customCards || [];
   window.customCards.push({
-    type: 'pixel-village-card',
+    type: 'companion-village-card',
     name: 'HA Companion Village',
     description: 'A tiny pixel-art village that lives along with your home.',
     preview: true,
-    documentationURL: 'https://github.com/frankdeluxe5k/pixel-village-card',
+    documentationURL: 'https://github.com/frankdeluxe5k/companion-village-card',
   });
   console.info(`%c HA-COMPANION-VILLAGE %c v${PV_VERSION} `, 'background:#3f9a50;color:#fff;border-radius:3px 0 0 3px', 'background:#2c3a70;color:#fff;border-radius:0 3px 3px 0');
 }

@@ -15,7 +15,7 @@
   main { max-width: 760px; margin: 0 auto; padding: 24px 16px 48px; }
   h1 { font-size: 22px; margin: 0 0 4px; }
   p.lede { margin: 0 0 18px; color: var(--muted); }
-  pixel-village-card { display: block; border-radius: 12px; overflow: hidden; background: var(--card);
+  companion-village-card { display: block; border-radius: 12px; overflow: hidden; background: var(--card);
     --secondary-text-color: var(--muted); box-shadow: 0 1px 3px rgba(0,0,0,.12); }
   .panel { margin-top: 18px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; display: grid; gap: 14px; }
   .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
@@ -32,7 +32,7 @@
 <main>
   <h1>HA Companion Village</h1>
   <p class="lede">A preview of the Home Assistant card. Scrub the clock, switch scenes, change the weather. Tap a villager to say hi.</p>
-  <pixel-village-card id="card"></pixel-village-card>
+  <companion-village-card id="card"></companion-village-card>
   <div class="panel">
     <div class="row">
       <label for="hour">Time</label>
@@ -64,7 +64,7 @@
     <p class="hint">In Home Assistant, the time comes from your server clock, and scenes come from whatever entities you map in the card config.</p>
   </div>
 </main>
-<script src="pixel-village-card.js"></script>
+<script src="companion-village-card.js"></script>
 <script>
   const card = document.getElementById('card');
   const states = {

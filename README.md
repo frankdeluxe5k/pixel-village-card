@@ -27,17 +27,17 @@ your home's clock, the weather, and whatever is happening in your house.
 Requires Home Assistant 2024.11 or newer.
 
 ### HACS (recommended)
-1. In HACS → ⋮ → **Custom repositories**, add `https://github.com/frankdeluxe5k/pixel-village-card`
+1. In HACS → ⋮ → **Custom repositories**, add `https://github.com/frankdeluxe5k/companion-village-card`
    as type **Dashboard**. Or use this link:
-   [![Open in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=frankdeluxe5k&repository=pixel-village-card&category=plugin)
+   [![Open in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=frankdeluxe5k&repository=companion-village-card&category=plugin)
 2. Download **HA Companion Village**. HACS adds the dashboard resource for you
-   (`/hacsfiles/pixel-village-card/pixel-village-card.js`) and tells you when there's an update.
+   (`/hacsfiles/companion-village-card/companion-village-card.js`) and tells you when there's an update.
 3. Edit a dashboard → **Add card** → search for **HA Companion Village**.
 
 ### Manual
-1. Copy `pixel-village-card.js` to `/config/www/pixel-village-card.js`.
+1. Copy `companion-village-card.js` to `/config/www/companion-village-card.js`.
 2. **Settings → Dashboards → ⋮ → Resources → Add resource**
-   URL `/local/pixel-village-card.js?v=1`, type **JavaScript module**.
+   URL `/local/companion-village-card.js?v=1`, type **JavaScript module**.
    (Bump `?v=` whenever you update the file so browsers pick up the new version.)
 3. Edit a dashboard → **Add card** → search for **HA Companion Village**.
 
@@ -79,7 +79,7 @@ That's handy for a "Good morning" scene that should end "Good night" and let the
 The editor writes plain YAML, so you can also write it yourself:
 
 ```yaml
-type: custom:pixel-village-card
+type: custom:companion-village-card
 title: Thornbrook
 villagers: 6
 weather_entity: weather.home
@@ -225,5 +225,5 @@ button for each event.
 - **Config errors** (an unknown mood, a misspelled condition, a bad time) show up in the card editor and
   on the card itself, saying which reaction or setting is wrong.
 - **An entity in your config doesn't exist?** The card ignores it and logs a warning in the browser
-  console (`pixel-village-card: these entities don't exist…`).
+  console (`companion-village-card: these entities don't exist…`).
 - **Manual install not updating?** Bump the `?v=` on the resource URL.
