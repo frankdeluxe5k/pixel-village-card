@@ -14,16 +14,16 @@ import { CompanionVillageCard } from './card/card.js';
 import { CompanionVillageCardEditor } from './editor/editor.js';
 import { PV_VERSION } from './version.js';
 
-if (!customElements.get('companion-village-card-editor')) customElements.define('companion-village-card-editor', CompanionVillageCardEditor);
-if (!customElements.get('companion-village-card')) {
-  customElements.define('companion-village-card', CompanionVillageCard);
+if (!customElements.get('pixel-village-card-editor')) customElements.define('pixel-village-card-editor', CompanionVillageCardEditor);
+if (!customElements.get('pixel-village-card')) {
+  customElements.define('pixel-village-card', CompanionVillageCard);
   window.customCards = window.customCards || [];
   window.customCards.push({
-    type: 'companion-village-card',
+    type: 'pixel-village-card',
     name: 'HA Companion Village',
     description: 'A tiny pixel-art village that lives along with your home.',
     preview: true,
-    documentationURL: 'https://github.com/frankdeluxe5k/companion-village-card',
+    documentationURL: 'https://github.com/frankdeluxe5k/pixel-village-card',
   });
   console.info(`%c HA-COMPANION-VILLAGE %c v${PV_VERSION} `, 'background:#3f9a50;color:#fff;border-radius:3px 0 0 3px', 'background:#2c3a70;color:#fff;border-radius:0 3px 3px 0');
 }

@@ -16,7 +16,7 @@ your home's clock, the weather, and whatever is happening in your house.
 - **Visual editor.** Set everything up from the card's configuration screen, with suggestions based on
   what's in your Home Assistant. No YAML needed (but YAML works too).
 - **Single file, zero dependencies.** It's a dashboard card that runs in the browser, so your Home
-  Assistant box only serves one ~300 KB file. No add-on, no container, no polling, no network requests.
+  Assistant box only serves one ~400 KB file. No add-on, no container, no polling, no network requests.
 - **Light enough for wall tablets.** Scenery, glows and sprites are drawn once and cached, so a frame
   takes about a millisecond on a desktop. Startup work is spread over several frames. It stops completely when
   the card is off screen or the tab is hidden, drops to 10 fps by itself on a device that can't keep
@@ -27,24 +27,26 @@ your home's clock, the weather, and whatever is happening in your house.
 Requires Home Assistant 2024.11 or newer.
 
 ### HACS (recommended)
-1. In HACS → ⋮ → **Custom repositories**, add `https://github.com/frankdeluxe5k/companion-village-card`
+1. In HACS → ⋮ → **Custom repositories**, add `https://github.com/frankdeluxe5k/pixel-village-card`
    as type **Dashboard**. Or use this link:
-   [![Open in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=frankdeluxe5k&repository=companion-village-card&category=plugin)
+   [![Open in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=frankdeluxe5k&repository=pixel-village-card&category=plugin)
 2. Download **HA Companion Village**. HACS adds the dashboard resource for you
-   (`/hacsfiles/companion-village-card/companion-village-card.js`) and tells you when there's an update.
+   (`/hacsfiles/pixel-village-card/pixel-village-card.js`) and tells you when there's an update.
 3. Edit a dashboard → **Add card** → search for **HA Companion Village**.
 
 ### Manual
-1. Download `companion-village-card.js` from the latest
-   [release](https://github.com/frankdeluxe5k/companion-village-card/releases) and copy it to
-   `/config/www/companion-village-card.js`.
+1. Download `pixel-village-card.js` from the latest
+   [release](https://github.com/frankdeluxe5k/pixel-village-card/releases) and copy it to
+   `/config/www/pixel-village-card.js`.
 2. **Settings → Dashboards → ⋮ → Resources → Add resource**
-   URL `/local/companion-village-card.js?v=1`, type **JavaScript module**.
+   URL `/local/pixel-village-card.js?v=3.0.0`, type **JavaScript module**.
    (Bump `?v=` whenever you update the file so browsers pick up the new version.)
 3. Edit a dashboard → **Add card** → search for **HA Companion Village**.
 
-Already using the original `pixel-village-card`? This card has its own name (`custom:companion-village-card`)
-and file, so both can be installed side by side while you move over.
+### Upgrading from 2.x
+3.0 is a rebuild of the card from the ground up, with the same card type (`custom:pixel-village-card`), the
+same file name and the same options, so your dashboards keep working as they are. With HACS, just take the
+update. With a manual install, replace `/config/www/pixel-village-card.js` and bump the `?v=` on the resource.
 
 Nothing else to set up: the card finds your weather entity and the sun on its own, and follows your
 time zone (your profile's "local" or "server" time zone setting is respected).
@@ -84,7 +86,7 @@ That's handy for a "Good morning" scene that should end "Good night" and let the
 The editor writes plain YAML, so you can also write it yourself:
 
 ```yaml
-type: custom:companion-village-card
+type: custom:pixel-village-card
 title: Thornbrook
 villagers: 9
 weather_entity: weather.home
@@ -267,7 +269,7 @@ button for each event.
 - **Config errors** (an unknown mood, a misspelled condition, a bad time) show up in the card editor and
   on the card itself, saying which reaction or setting is wrong.
 - **An entity in your config doesn't exist?** The card ignores it and logs a warning in the browser
-  console (`companion-village-card: these entities don't exist…`).
+  console (`pixel-village-card: these entities don't exist…`).
 - **Manual install not updating?** Bump the `?v=` on the resource URL.
 
 ## Building from source
@@ -276,7 +278,7 @@ The card is written as ES modules in `src/` and bundled into one file with esbui
 
 ```sh
 npm ci
-npm run build        # dist/companion-village-card.js
+npm run build        # dist/pixel-village-card.js
 npm run build:dev    # also the dev build used by demo.html and the tests
 npm run watch        # rebuild on every change
 ```

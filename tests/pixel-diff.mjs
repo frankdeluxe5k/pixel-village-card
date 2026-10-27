@@ -1,5 +1,5 @@
 // Pixel-for-pixel regression bench: renders the same scenarios with a baseline build of the card and with
-// the current dist/companion-village-card.js, and reports any frame that differs.
+// the current dist/pixel-village-card.js, and reports any frame that differs.
 //
 //   npm run build && node tests/pixel-diff.mjs [--base <commit> | <commit>:<single file>] [--only <name substring>] [--out <dir>]
 //
@@ -14,10 +14,10 @@ const arg = (k, d) => { const i = process.argv.indexOf(k); return i > 0 ? proces
 const BASE = arg('--base', DEFAULT_BASE);
 const ONLY = arg('--only', '');
 const OUT = arg('--out', '');
-const TAG = 'companion-village-card';
+const TAGS = ['pixel-village-card', 'companion-village-card']; // 3.x name, and the name older baselines (pre-merge v2 commits) used
 
 const baseJs = baselineJs(BASE);
-const curJs = readFileSync(process.env.CUR || 'dist/companion-village-card.js', 'utf8');
+const curJs = readFileSync(process.env.CUR || 'dist/pixel-village-card.js', 'utf8');
 
 // ---- scenarios ----
 const scenarios = [];
@@ -96,7 +96,7 @@ async function render(js, sc, png) {
   await page.addInitScript(fakes, [1234567, new Date(y, m, d, 12, 0).getTime()]);
   await page.goto('http://bench.local/');
   let res;
-  try { res = await page.evaluate(run, [TAG, sc]); } catch (e) { errors.push(String(e)); res = []; }
+  try { res = await page.evaluate(run, [await page.evaluate((t) => t.find((n) => customElements.get(n)), TAGS), sc]); } catch (e) { errors.push(String(e)); res = []; }
   await page.close();
   return { res, errors };
 }

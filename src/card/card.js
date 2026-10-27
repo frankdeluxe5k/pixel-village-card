@@ -20,7 +20,7 @@ import { EVENT_BLOCKS, setEventBlocks } from '../world/nav.js';
 
 export class CompanionVillageCard extends HTMLElement {
   static getConfigElement() {
-    return document.createElement('companion-village-card-editor');
+    return document.createElement('pixel-village-card-editor');
   }
 
   static getStubConfig(hass) {
@@ -90,7 +90,7 @@ export class CompanionVillageCard extends HTMLElement {
     this._warned = true;
     // the default sun.sun only counts if the user picked it; without it the card uses the clock
     const missing = this._watched().filter((e) => !states[e] && !(e === 'sun.sun' && !this._userSun));
-    if (missing.length) console.warn(`companion-village-card: these entities don't exist in Home Assistant: ${missing.join(', ')}`);
+    if (missing.length) console.warn(`pixel-village-card: these entities don't exist in Home Assistant: ${missing.join(', ')}`);
   }
 
   getCardSize() {
@@ -196,7 +196,7 @@ export class CompanionVillageCard extends HTMLElement {
       this._pace(performance.now() - t0);
     } catch (e) {
       // keep the village running through a bad frame, and say so once
-      if (!this._crashed) { this._crashed = true; console.error('companion-village-card:', e); }
+      if (!this._crashed) { this._crashed = true; console.error('pixel-village-card:', e); }
     }
     this._timer = setTimeout(() => { this._raf = requestAnimationFrame(() => this._tick(loop)); }, 1000 / Math.min(this._fps(), this._fpsCap || 30));
   }

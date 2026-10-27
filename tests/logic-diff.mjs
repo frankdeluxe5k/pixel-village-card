@@ -10,7 +10,7 @@ import { readFileSync } from 'node:fs';
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : d; };
 const BASE = arg('--base', DEFAULT_BASE);
 const baseJs = baselineJs(BASE, 'src/dev.js', 'CompanionVillage');
-const devJs = readFileSync('dist/companion-village-card.dev.js', 'utf8');
+const devJs = readFileSync('dist/pixel-village-card.dev.js', 'utf8');
 
 const NAMES = ['route', 'freeSpot', 'blocked', 'eventsForDay', 'evalReactions', 'suggestReactions', 'validateConfig', 'reactionKind',
   'buildVillager', 'animalSprite', 'makeTree', 'drawShrub', 'mk', 'ANIM', 'EVENTS', 'seasonOf', 'scheduleMode', 'readWeather', 'birdSpot', 'W', 'H', 'HORIZON'];
@@ -88,13 +88,13 @@ async function probe(L) {
   // the editor: built with no HA components loaded, so ha-form elements stay inert
   // stand-ins for HA's lazy-loaded form elements: they just hold the data and schema the editor gives them
   for (const t of ['ha-form', 'ha-entity-picker']) if (!customElements.get(t)) customElements.define(t, class extends HTMLElement {});
-  const ed = document.createElement('companion-village-card-editor');
+  const ed = document.createElement(['pixel-village-card-editor', 'companion-village-card-editor'].find((n) => customElements.get(n)));
   document.body.appendChild(ed);
   ed.hass = { states, config: {}, locale: {} };
   ed.setConfig({ villagers: 6, title: 'Village', triggers: lists[0], schedule: { wake: '06:30' } });
   await new Promise((ok) => setTimeout(ok, 200));
   const root = ed.shadowRoot || ed;
-  out.editor = root.innerHTML.replace(/companion-village-card|pixel-village-card/g, 'X');
+  out.editor = root.innerHTML.replace(/pixel-village-card|pixel-village-card/g, 'X');
   out.editorData = [...root.querySelectorAll('*')].filter((e) => e.data || e.schema).map((e) => JSON.stringify([e.tagName, e.data, e.schema, e.computeLabel && e.schema?.map?.((x) => e.computeLabel(x)), e.computeHelper && e.schema?.map?.((x) => e.computeHelper(x))]));
   return out;
 }

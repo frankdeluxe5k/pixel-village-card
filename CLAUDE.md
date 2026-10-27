@@ -5,24 +5,25 @@ follow a daily routine, visitors come and go, animals wander, and the whole scen
 day, the weather, the season and whatever is happening in the user's home (scenes, scripts, any entity).
 It's meant to be shared and to work across many different Home Assistant setups, not just one.
 
-Repo: `github.com/frankdeluxe5k/companion-village-card` (private for now; it becomes public when 2.0 is ready
-for HACS). This is "Village 2.0": a copy of v1 (`github.com/frankdeluxe5k/pixel-village-card`, which stays a
-single file and keeps working for existing installs) split into modules with a build step. Commit as
-`frankdeluxe5k` (`89476351+frankdeluxe5k@users.noreply.github.com`). Only commit or push when the user asks.
-Treat everything pushed as public (commit messages, CLAUDE.md and history included), so keep it free of real
-places, named inspirations and anything personal.
+Repo: `github.com/frankdeluxe5k/pixel-village-card` (public, on HACS). Version 3.0 replaced the old
+single-file card (2.x, still in the history up to `43fbd34`) with the modular rewrite from the private
+`github.com/frankdeluxe5k/companion-village-card` ("Village 2.0"), merged in with its history. That private
+repo is kept for now as a staging copy under the other names (`custom:companion-village-card`) so it can be
+previewed next to this one. Commit as `frankdeluxe5k` (`89476351+frankdeluxe5k@users.noreply.github.com`).
+Only commit or push when the user asks. Everything pushed is public (commit messages, CLAUDE.md and history
+included), so keep it free of real places, named inspirations and anything personal.
 
-The display name is "HA Companion Village". The element type is `custom:companion-village-card` (editor:
-`companion-village-card-editor`), the file `companion-village-card.js`. All of these differ from v1's
-`pixel-village-card` names so both can be installed side by side; the bundle is an IIFE, so none of v2's
-top-level names leak into the page (v1, a classic script, does put its names in the global scope). Public text
+The display name is "HA Companion Village". The element type is `custom:pixel-village-card` (editor:
+`pixel-village-card-editor`), the file `pixel-village-card.js`, the same as 2.x so existing installs and
+dashboards upgrade in place; config options are unchanged from 2.x. The bundle is an IIFE, so none of the
+card's top-level names leak into the page. Public text
 stays vague about the setting: no real places and no named consoles, games or other inspirations.
 
 ## Files and build
 
 - `src/` — the card as ES modules (layout below). No runtime dependencies.
-- `build.mjs` (esbuild, the only build dependency): `npm run build` → `dist/companion-village-card.js` (IIFE,
-  es2020, not minified). `npm run build:dev` also writes `dist/companion-village-card.dev.js` from
+- `build.mjs` (esbuild, the only build dependency): `npm run build` → `dist/pixel-village-card.js` (IIFE,
+  es2020, not minified). `npm run build:dev` also writes `dist/pixel-village-card.dev.js` from
   `src/dev.js`, which exposes every module's exports as `window.CompanionVillage` (sprite sheets, route fuzz,
   the demo's event buttons). `npm run watch` rebuilds on change; `npm run check` = dev build + `node --check`.
   `dist/` is not committed.
@@ -31,9 +32,9 @@ stays vague about the setting: no real places and no named consoles, games or ot
   / `previewSeason` / `previewWeather` / `previewEvent`.
 - `tests/` — `pixel-diff.mjs` and `logic-diff.mjs` (see Testing).
 - `README.md` — user docs. `hacs.json` — HACS metadata (Dashboard / `plugin`, minimum HA 2024.11 for
-  `getGridOptions`, `filename: companion-village-card.js`).
+  `getGridOptions`, `filename: pixel-village-card.js`).
 - `.github/workflows/validate.yml` (`hacs/action` + `npm ci` + `npm run check`), `release.yml` (publishing a
-  GitHub release builds the card and attaches `dist/companion-village-card.js`, which is what HACS downloads;
+  GitHub release builds the card and attaches `dist/pixel-village-card.js`, which is what HACS downloads;
   it fails if `src/version.js` doesn't match the tag). Releases are tagged `v<PV_VERSION>`; bump
   `src/version.js` and `package.json` together. HACS also needs the repo public, a repo description, topics
   and issues enabled.
@@ -357,7 +358,7 @@ Rules learned the hard way:
 - **Refactors must be pixel-identical.** `npm run build:dev && node tests/pixel-diff.mjs` renders 43 seeded
   scenarios (every mood, season × weather, each event's stages, mood transitions, 1 and 10 villagers, southern
   hemisphere, the real event schedule) with a baseline and with `dist/`, and fails on any differing pixel or
-  status line. The baseline (`tests/baseline.mjs`) is built from a commit's `src/` (`--base <commit>`, default
+  status line. The benches find the card under either name (`pixel-village-card` or the pre-merge `companion-village-card`), so baselines from before the merge still work. The baseline (`tests/baseline.mjs`) is built from a commit's `src/` (`--base <commit>`, default
   `DEFAULT_BASE`), or is a single-file card from the pre-split history (`--base 0062655:companion-village-card.js`).
   `--only <name>` filters; `--out <dir>` writes base/current/diff PNGs with a count and bounding box. Each
   scenario gets a fresh page with `Math.random` seeded and `performance.now`/`Date` faked, and steps
@@ -389,8 +390,7 @@ Rules learned the hard way:
   and a dedicated storage dashboard over the websocket API (`/lovelace` redirects to the new Home dashboard
   in 2026). Log the browser in by putting `hassTokens` in localStorage. In edit mode, card changes need the
   dialog's Save; then read back with `lovelace/config`.
-- v1 is at `/config/www/pixel-village-card.js` on the user's Pi; v2 would go next to it as
-  `/config/www/companion-village-card.js` (from `dist/`). Bump the resource `?v=` after updates.
+- Manual installs live at `/config/www/pixel-village-card.js` (from `dist/`). Bump the resource `?v=` after updates.
 
 ## Backlog (agreed, in order)
 

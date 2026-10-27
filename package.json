@@ -1,5 +1,5 @@
 {
-  "name": "companion-village-card",
+  "name": "pixel-village-card",
   "version": "3.0.0",
   "private": true,
   "description": "HA Companion Village: a tiny living pixel-art village for Home Assistant dashboards",
@@ -9,7 +9,7 @@
     "build": "node build.mjs",
     "build:dev": "node build.mjs --dev",
     "watch": "node build.mjs --watch",
-    "check": "node build.mjs --dev && node --check dist/companion-village-card.js",
+    "check": "node build.mjs --dev && node --check dist/pixel-village-card.js",
     "test": "node build.mjs --dev && node tests/pixel-diff.mjs"
   },
   "devDependencies": {

@@ -1,4 +1,4 @@
-// The visual editor (companion-village-card-editor).
+// The visual editor (pixel-village-card-editor).
 import { DEFAULT_VILLAGERS } from '../content/jobs.js';
 import { DEFAULT_SCHEDULE } from '../content/moods.js';
 import { DEFAULT_FPS } from '../core/constants.js';
