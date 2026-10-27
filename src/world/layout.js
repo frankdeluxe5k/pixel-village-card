@@ -60,10 +60,12 @@ export const ENTRANCE = PATHS[0].pts[0];
 
 export const FIRE = { x: 92, y: 112 };
 export const WELL = { x: 145, y: 73 };
-export const STUMP = { x: 60, y: 122 };
+export const STUMP = { x: 55, y: 122 }; // the chopping block, with the woodpile stacked to its right (clear of the bench)
 // Village square furniture, in render pixels.
 export const POND = { x: 392, y: 352, rx: 20, ry: 8 };
 export const LAMPS = [[FIRE.x * S - 58, FIRE.y * S - 34], [FIRE.x * S + 64, FIRE.y * S - 37]];
+// Benches around the fire: [left x, ground line y, width].
+export const BENCHES = [[FIRE.x * S - 18, FIRE.y * S - 20, 36], [FIRE.x * S - 70, FIRE.y * S + 21, 20], [FIRE.x * S + 50, FIRE.y * S + 23, 20]];
 
 // Movie night: a pull-up screen right of the fire, a projector behind the audience.
 // The amphitheater on the left: stage with a roll-down screen, curved tiers facing it.
@@ -100,7 +102,7 @@ export const STOOLS = [[584, 330], [606, 330]];
 // Seats in simulation units: two per table, then the stools at the cart.
 export const CAFE_SEATS = [
   ...TABLES.flatMap(([tx, ty]) => [{ x: (tx - 13) / S, y: (ty + 2) / S, face: 1 }, { x: (tx + 13) / S, y: (ty + 2) / S, face: -1 }]),
-  ...STOOLS.map(([x, y]) => ({ x: x / S, y: y / S, face: 1 })),
+  ...STOOLS.map(([x, y]) => ({ x: x / S, y: y / S, face: 1, stool: true })),
 ];
 export const BARISTA = { x: (CART.x + 28) / S, y: CART.by / S };
 

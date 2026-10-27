@@ -167,7 +167,9 @@ things, plus a few one-time setup statements on its own data (house geometry, pa
 - Paths: cobbled main road entering from the east edge to the fire square, a cobbled lane up to the
   tavern, dirt paths to each house, a west lane out the left edge, and worn footpaths to the well/farm, café
   and amphitheater. Villagers and animals walk this network (`route()`), never through `FOOTPRINTS`.
-- Fire square with flagstones, stone-ringed fire pit, benches and two street lamps; pond with lilies.
+- Fire square with flagstones, stone-ringed fire pit, benches (`BENCHES`) and two street lamps; pond with lilies. The
+  pit and the benches are `FOOTPRINTS`; walkers cross the square through the gap between the back bench and the fire
+  (two hub nodes in `NAV`, and square links that would cross a footprint are dropped).
 - Farm at the back centre (drawn smaller to read as distance), scarecrow, small haystack at its left end;
   well behind and right of the tavern.
 - Café at the front right: brick patio, four umbrella tables with stools, coffee cart (cook is barista).
@@ -221,8 +223,10 @@ things, plus a few one-time setup statements on its own data (house geometry, pa
   belts, white-soled sneakers) playing in front of the tavern, above the string lights over the square.
   Animals: 2 dogs (follow owners, nap at their door), a cat, birds (land only on open ground or roof ridges),
   rabbits, squirrels.
-- Café poses (`TABLE_POSES`: sip, laptop, handheld) keep the hands on the tabletop, since everyone there sits behind
-  a table; children's hands are raised 2 px to match.
+- Café poses (`TABLE_POSES`: sip, laptop, handheld): everyone sits behind a table whose far edge is sprite row FY - 14,
+  so hands and anything held stay at FY - 15 or above (a mug resting on the edge), never behind the top;
+  children's hands are raised 2 px to match. The table draws the laptop (lid on the pole side, screen facing the
+  sitter) and their coffee; laptops only go to table seats, never the cart stools.
 - Animation variants (`VARIANTS` in `art/villager/anim.js`): base pose → `[[pose, weight], …]`, default first,
   rarest last (dances: sway/jig/spin; kidplay: hop/twirl; chop: side swing/lean on the axe; farm: dig/weed by
   hand; sweep and rake; cook: season/taste; chat: wave/laugh; idle: shade the eyes/whistle; guitar and bass:

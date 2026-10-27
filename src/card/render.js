@@ -223,7 +223,7 @@ export const renderMethods = {
     if (this._mode === 'party') this._drawPartyLights(ctx, dark);
     this._redrawInFrontOfLights(ctx, tint, dark, items, fixed);
     if ((this._mode === 'movie' || this._mode === 'gaming') && this._screen >= 1) this._drawFilm(ctx, dark);
-    if (this._mode === 'gaming' && dark) for (const v of this._villagers) if (!v.walking && v.action === 'handheld') this._glow(ctx, v.x * S + v.face * 6, v.y * S - 14, 8, '150,210,255', 0.45);
+    if (this._mode === 'gaming' && dark) for (const v of this._villagers) if (!v.walking && v.action === 'handheld') this._glow(ctx, v.x * S + v.face * 10, v.y * S - 17, 8, '150,210,255', 0.45);
     if (ph === 'night' && !w.rain && !w.snow) this._drawFireflies(ctx);
     this._drawParticles(ctx, 1);
     this._drawWeather(ctx, dark);
@@ -247,13 +247,14 @@ export const renderMethods = {
     for (const side of [0, 1]) {
       const v = this._seated(i * 2 + side);
       if (!v) continue;
-      const d = side ? 1 : -1; // which edge of the table this person sits at
-      if (v.action !== 'sip') { P(ctx, tx + d * 2 - (d < 0 ? 2 : 0), ty - 12, 3, 3, '#ffffff'); P(ctx, tx + d * 2 - (d < 0 ? 2 : 0), ty - 12, 3, 1, '#6a3a1a'); } // a sipper holds their own
-      if (v.action === 'laptop') {
-        const lx = tx + d * 6;
-        P(ctx, lx - 3, ty - 11, 7, 1, '#9aa0aa');
-        P(ctx, lx + d * 3, ty - 16, 1, 5, '#5a5e6a'); P(ctx, lx + d * 2, ty - 16, 1, 5, '#c8ccd4');
-      }
+      if (v.action !== 'laptop') continue; // a sipper holds their own mug
+      // the laptop sits on the far edge under their hands, its lid between them and the umbrella pole (tx - 1, tx),
+      // the screen facing them; their coffee stands in front of it on the near half of the tabletop
+      const d = side ? 1 : -1, near = d < 0 ? tx - 4 : tx + 3; // which edge of the table this person sits at
+      P(ctx, d < 0 ? tx - 9 : tx + 3, ty - 12, 7, 1, '#9aa0aa');
+      P(ctx, near, ty - 17, 1, 5, '#c8ccd4'); P(ctx, near - d, ty - 17, 1, 5, '#5a5e6a');
+      const mx = d < 0 ? tx - 8 : tx + 5;
+      P(ctx, mx, ty - 10, 3, 3, '#ffffff'); P(ctx, mx, ty - 10, 3, 1, '#6a3a1a');
     }
   },
 
@@ -264,7 +265,7 @@ export const renderMethods = {
       this._glow(ctx, tx, ty - 11, 14, '255,190,100', 0.35);
       for (const side of [0, 1]) {
         const v = this._seated(i * 2 + side);
-        if (v?.action === 'laptop') this._glow(ctx, tx + (side ? 9 : -9), ty - 14, 9, '150,190,255', 0.4);
+        if (v?.action === 'laptop') this._glow(ctx, tx + (side ? 6 : -7), ty - 15, 9, '150,190,255', 0.4);
       }
     });
     this._glow(ctx, CART.x, CART.by - 40, 22, '255,200,120', 0.3);

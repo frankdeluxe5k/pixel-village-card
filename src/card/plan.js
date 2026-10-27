@@ -39,7 +39,7 @@ export const planMethods = {
     const cook = () => ({ x: FIRE.x - 7, y: FIRE.y, face: 1, action: 'cook', dur: rand(8, 14) });
     const cafe = (action, dur) => {
       const taken = new Set(this._villagers.filter((o) => o !== v && o.plan?.seat !== undefined).map((o) => o.plan.seat));
-      const free = CAFE_SEATS.map((_, i) => i).filter((i) => !taken.has(i));
+      const free = CAFE_SEATS.map((_, i) => i).filter((i) => !taken.has(i) && !(action === 'laptop' && CAFE_SEATS[i].stool)); // a laptop needs a table
       if (!free.length) return chat();
       const i = pick(free), st = CAFE_SEATS[i];
       return { x: st.x, y: st.y, face: st.face, seat: i, action, dur };

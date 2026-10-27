@@ -1,11 +1,13 @@
 // Walking: footprints, the path graph, event blocks and route finding.
-import { HORIZON, W } from '../core/constants.js';
-import { FIRE, HOUSES, PATHS, WELL } from './layout.js';
+import { HORIZON, S, W } from '../core/constants.js';
+import { BENCHES, FIRE, HOUSES, PATHS, WELL } from './layout.js';
 
 // Ground footprints villagers shouldn't walk through, and a path network along the road.
 export const FOOTPRINTS = [
   ...HOUSES.map((h) => [h.x - 1, h.base - 8, h.x + h.w + 1, h.base + 0.5]),
   [WELL.x - 6, WELL.y - 5, WELL.x + 6, WELL.y + 0.5],
+  [FIRE.x - 7, FIRE.y - 2, FIRE.x + 7, FIRE.y + 4], // the stone ring of the fire pit (the cook stands at its west edge)
+  ...BENCHES.map(([x, by, w]) => [x / S - 0.7, by / S - 1.5, (x + w) / S + 0.7, by / S + 0.6]),
 ];
 export const NAV = (() => {
   // every path becomes a chain of nodes; path ends link to the nearest node on another path
@@ -27,9 +29,14 @@ export const NAV = (() => {
     if (best >= 0 && !adj[i].includes(best)) { adj[i].push(best); adj[best].push(i); }
   };
   nodes.forEach((_, i) => { if (i === 0 || owner[i - 1] !== owner[i] || i === nodes.length - 1 || owner[i + 1] !== owner[i]) link(i); });
-  // the square is a hub: path ends that reach it connect across it
+  // the square is a hub: path ends that reach it connect across it, through the gap between the back bench and the fire
+  [[FIRE.x - 9, FIRE.y - 4.6], [FIRE.x + 8.5, FIRE.y - 4.8]].forEach((pt, k) => { nodes.push(pt); adj.push([]); owner.push(-1 - k); });
   const onSquare = nodes.map((n, i) => i).filter((i) => ((nodes[i][0] - FIRE.x) / 26) ** 2 + ((nodes[i][1] - FIRE.y) / 12) ** 2 < 1);
-  for (const i of onSquare) for (const j of onSquare) if (i < j && owner[i] !== owner[j] && !adj[i].includes(j)) { adj[i].push(j); adj[j].push(i); }
+  for (const i of onSquare) for (const j of onSquare) {
+    if (i >= j || owner[i] === owner[j] || adj[i].includes(j)) continue;
+    if (FOOTPRINTS.some((r) => segHits(...nodes[i], ...nodes[j], r))) continue; // not across the fire or a bench
+    adj[i].push(j); adj[j].push(i);
+  }
   return { nodes, adj };
 })();
 // Temporary footprints of event props (carts, stalls, sculptures), per card; every card's count, like FOOTPRINTS.

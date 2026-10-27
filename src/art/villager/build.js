@@ -57,7 +57,7 @@ export function buildVillager(v, pose, frame, carry, gear) {
     default: { const pt = POSE_TOOL[pose] || POSE_TOOL[base]; if (pt) tool = pt(frame); }
   }
   if (k && 'tool' in k) tool = k.tool; // a keyframe can put the tool down (weeding by hand)
-  if (carry === 'log') { back = [-1, -3]; front = [2, -3]; }
+  if (carry === 'log') { back = [-1, -3]; front = [5, -3]; } // the near hand grips the log's end, clear of the face
   else if (carry === 'bucket' && pose !== 'water') { front = [1, 6]; tool = 'bucket'; }
   else if (carry === 'sign') { back = [4, 2]; front = [5, 1]; }
   else if (carry === 'package' || carry === 'crate' || carry === 'pumpkins') { back = [4, 3]; front = [6, 2]; }
@@ -76,6 +76,7 @@ export function buildVillager(v, pose, frame, carry, gear) {
   if (v.job === 'carrier' || L.skirt) drawSkirt(g, tb, pants, sit, L.skirt === 'long');
   if (L.outfit?.includes('smock') && !sit) { P(g, AX - 4, tb, 9, 2, shirt.m); P(g, AX - 4, tb, 1, 2, shirt.l); P(g, AX + 3, tb, 2, 2, shirt.d); P(g, AX - 4, tb + 1, 9, 1, shirt.d); }
 
+  if (carry === 'log') drawCarry(g, 'log', 0, 0, tt); // across the shoulders, behind the head
   const eyes = drawHead(g, v, hy, skin, hair);
   if (v.job === 'mail' || L.outfit?.includes('satchel')) { line(g, AX + 2, tt, AX - 3, tb - 3, '#5a3a20', 1); P(g, AX - 7, tb - 4, 5, 4, '#8a5a30'); P(g, AX - 7, tb - 4, 5, 1, '#a87a48'); }
   if (gear) line(g, AX - 3, tt + 1, AX + 1, tt + 5, '#4a2a18', 1);
@@ -84,7 +85,7 @@ export function buildVillager(v, pose, frame, carry, gear) {
   if (tool === 'hoe' || tool === 'axe' || tool === 'hammer' || tool === 'shovel') drawHafted(g, tool, hf, dir || [0.8, 0.6]);
   else if (INSTRUMENTS.includes(tool)) drawInstrument(g, v, tool, hf, hb, tt, skin);
   else if (tool) drawTool(g, tool, hf[0], hf[1], frame, tt, tb);
-  if (carry && carry !== 'bucket' && carry !== 'case') drawCarry(g, carry, hf[0], hf[1], tt);
+  if (carry && carry !== 'bucket' && carry !== 'case' && carry !== 'log') drawCarry(g, carry, hf[0], hf[1], tt);
   if (stick) {
     line(g, hf[0] + 1, hf[1] - 9, hf[0] + 2, FY, '#9a6a3a', 2);
     P(g, hf[0], hf[1] - 11, 3, 3, '#6a4020');
@@ -130,6 +131,7 @@ export function buildRider(v, frame, carry) {
   const pedal2 = [AX + 1 - Math.round(Math.cos(a) * 3), FY - 4 - Math.round(Math.sin(a) * 3)];
   limb(g, [AX - 2, tb], pedal2, { m: pants.d, l: pants.d }, { m: SHOE.d, l: SHOE.m, d: SHOE.o }, false);
   drawTorso(g, v, tt, tb, shirt, pants, skin);
+  if (carry === 'log') drawCarry(g, 'log', 0, 0, tt); // across the shoulders, behind the head
   const eyes = drawHead(g, v, hy, skin, hair);
   limb(g, [AX - 1, tb], pedal, { m: pants.m, l: pants.l }, { m: SHOE.m, l: SHOE.l, d: SHOE.d }, true);
   limb(g, [AX + 3, tt + 2], [AX + 6, FY - 13], shirt, skin, true);

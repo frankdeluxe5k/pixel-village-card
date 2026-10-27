@@ -19,17 +19,18 @@ export const KEYS = {
   ],
   stretch: [{ f: [1, 4], b: [-1, 4] }, { f: [2, -4], b: [-2, -4] }, { f: [2, -8], b: [-2, -8], bob: -1 }],
   eat: [{ f: [3, 4], b: [1, 5] }, { f: [3, 1], b: [1, 5] }, { f: [3, -3], b: [1, 5] }],
-  // café poses: everyone sits behind a table, so hands stay on the tabletop (FY - 14) instead of dipping under it
-  sip: [{ f: [6, -2], b: [2, 4] }, { f: [5, -4], b: [2, 4] }, { f: [3, -4], b: [2, 4] }],
+  // café poses: everyone sits behind a table whose far edge is the sprite's row FY - 14, so hands and what they
+  // hold stay at FY - 15 or above (a mug resting on the edge, hands on the laptop's keys), never behind the top
+  sip: [{ f: [6, -4], b: [2, 4] }, { f: [5, -5], b: [2, 4] }, { f: [3, -5], b: [2, 4] }],
   watch: [{ f: [2, 4], b: [1, 5] }, { f: [3, 1], b: [1, 5] }, { f: [3, -3], b: [1, 5] }],
-  laptop: [{ f: [5, -2], b: [4, -2] }, { f: [5, -3], b: [4, -2] }, { f: [5, -2], b: [3, -3] }, { f: [6, -3], b: [4, -2] }],
+  laptop: [{ f: [5, -4], b: [4, -4] }, { f: [5, -5], b: [4, -4] }, { f: [5, -4], b: [3, -5] }, { f: [5, -5], b: [4, -4] }],
   lute: [{ f: [2, 4], b: [6, 0] }, { f: [2, 5], b: [6, -1] }, { f: [3, 4], b: [6, 0] }, { f: [2, 6], b: [7, 0] }],
   sweep: [{ f: [3, 4], b: [1, 5] }, { f: [4, 4], b: [2, 5] }, { f: [5, 4], b: [3, 5] }, { f: [4, 4], b: [2, 5] }],
   fetch: [{ f: [4, 5], b: [3, 3] }, { f: [4, 3], b: [3, 2] }, { f: [4, 1], b: [3, 1] }, { f: [4, 3], b: [3, 2] }],
   setup: [{ f: [3, -6], b: [-1, -8] }, { f: [2, -8], b: [0, -7] }, { f: [3, -9], b: [-1, -6] }, { f: [2, -7], b: [0, -8] }],
   serve: [{ f: [6, 1], b: [4, 2] }, { f: [5, -1], b: [4, 2] }, { f: [4, 2], b: [4, 2] }, { f: [6, 1], b: [4, 2] }],
   water: [{ f: [6, 1], b: [4, 2] }, { f: [6, 0], b: [4, 1] }],
-  handheld: [{ f: [4, -3], b: [3, -2] }, { f: [4, -2], b: [3, -2] }, { f: [4, -3], b: [3, -3] }],
+  handheld: [{ f: [6, -5], b: [3, -4] }, { f: [6, -6], b: [3, -4] }, { f: [6, -5], b: [3, -5] }],
   controller: [{ f: [3, 2], b: [2, 3] }, { f: [4, 2], b: [2, 2] }, { f: [3, 1], b: [2, 3] }],
   // sticks: snare hit, other hand down on the tom, crash
   band_drums: [{ f: [3, 3], b: [8, -5] }, { f: [2, -5], b: [10, 2] }, { f: [9, -4], b: [8, -5] }],

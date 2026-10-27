@@ -8,7 +8,7 @@ import { HZ, RH, RW, S } from '../core/constants.js';
 import { mulberry32, pick, rand } from '../core/math.js';
 import { bayer, hash2, vnoise } from '../core/noise.js';
 import { P, ellipse, line, mk, outline, tpl } from '../core/pixels.js';
-import { AMPHI, CART, FARM, FIRE, HOUSES, LAMPS, PATHS, PATIO, POND, STOOLS, STUMP, TABLES, WELL } from '../world/layout.js';
+import { AMPHI, BENCHES, CART, FARM, FIRE, HOUSES, LAMPS, PATHS, PATIO, POND, STOOLS, STUMP, TABLES, WELL } from '../world/layout.js';
 import { lookOf } from '../core/time.js';
 
 // The whole land layer at once (tests, tools). The card builds it in steps across frames instead.
@@ -321,7 +321,7 @@ export function* buildLandSteps(snow, look = 'summer') {
   prop(scx - 13, scy - 32, 26, 34, scy / S, (pg) => drawScarecrow(pg, scx, scy, snow));
   const sx = STUMP.x * S, sy = STUMP.y * S - 8;
   prop(sx - 13, sy - 24, 56, 36, STUMP.y - 0.1, (pg) => drawWoodpile(pg, snow));
-  for (const [bx, by, bw] of [[FX - 18, FPY - 20, 36], [FX - 70, FPY + 21, 20], [FX + 50, FPY + 23, 20]]) prop(bx - 2, by - 12, bw + 4, 14, by / S, (pg) => drawBench(pg, bx, by, bw, snow));
+  for (const [bx, by, bw] of BENCHES) prop(bx - 2, by - 12, bw + 4, 14, by / S, (pg) => drawBench(pg, bx, by, bw, snow));
   for (const [lx, ly] of LAMPS) prop(lx - 6, ly - 46, 12, 48, ly / S, (pg) => drawLamp(pg, lx, ly));
   SHRUBS.forEach((sh, i) => {
     const pr = shrubProp(sh, snow, L.key, false);
