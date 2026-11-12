@@ -1,6 +1,6 @@
 {
   "name": "pixel-village-card",
-  "version": "3.1.0",
+  "version": "3.1.1",
   "private": true,
   "description": "HA Companion Village: a tiny living pixel-art village for Home Assistant dashboards",
   "license": "MIT",
