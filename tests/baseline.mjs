@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { buildSync } from 'esbuild';
 
-export const DEFAULT_BASE = 'b968171';
+export const DEFAULT_BASE = 'efff7a5';
 
 export function baselineJs(ref, entry = 'src/index.js', globalName) {
   if (ref.includes(':')) return execSync(`git show ${ref}`, { maxBuffer: 1 << 26 }).toString();
