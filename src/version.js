@@ -1,1 +1,1 @@
-export const PV_VERSION = '3.1.2';
+export const PV_VERSION = '3.1.3';
