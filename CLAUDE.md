@@ -177,7 +177,7 @@ things, plus a few one-time setup statements on its own data (house geometry, pa
   in `FOOTPRINTS`): a German Shepherd painted in true colours (cream coat, black saddle and tail, black face and
   ears, pale rims on the black so it stays crisp against the farm) sitting tall on a granite plinth, with a bronze ball cast at its
   forepaws (part of the statue; it never moves). The handyman stops there now and then (`MEMORIAL_VISIT`, the
-  quiet `reflect` pose, at most once every 90 s). Keep that spot clear of events, leaf piles and lamps.
+  quiet `reflect` pose, at most once every 90 s). It sits low enough that its head is against the grass, below the farm fence. Keep that spot clear of events, leaf piles and lamps.
 - Café at the front right: brick patio, four umbrella tables with stools, coffee cart (cook is barista).
 - Amphitheater at the front left: low turf terraces with fieldstone faces and log benches, painted onto
   the ground (no outline); a small rustic screen panel turned ~45° toward the seats, partly off the left
