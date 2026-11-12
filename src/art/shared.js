@@ -4,7 +4,7 @@ import { AMPHI_LANTERNS } from './venues.js';
 import { HZ, RW, S } from '../core/constants.js';
 import { lerp } from '../core/math.js';
 import { mk } from '../core/pixels.js';
-import { CART, HOUSES, LAMPS, TABLES } from '../world/layout.js';
+import { CART, HOUSES, LAMPS, MEMORIAL, MEMORIAL_LIGHT, TABLES } from '../world/layout.js';
 
 // Land layers (terrain + props + sky mask) and houses are shared by every card on the page, keyed by
 // snow/season, and both snow states stay cached so weather flips don't rebuild them.
@@ -63,6 +63,7 @@ export function allLightRects() {
     allLights.push([h.lantern.x - 2, h.lantern.y, 5, 7, h.base]);
   }
   for (const [lx, ly] of LAMPS) allLights.push([lx - 3, ly - 38, 7, 7, ly / S]);
+  allLights.push([...MEMORIAL_LIGHT, MEMORIAL.y]);
   for (const [lx, ly] of AMPHI_LANTERNS) allLights.push([lx - 1, ly - 1, 3, 3, (ly + 17) / S]);
   for (const [tx, ty] of TABLES) allLights.push([tx - 3, ty - 15, 7, 7, (ty + 3) / S]);
   allLights.push([CART.x - 10, CART.by - 50, 20, 20, CART.by / S]);

@@ -6,7 +6,8 @@ import { mixHex, ramp } from '../core/color.js';
 import { OUT, S } from '../core/constants.js';
 import { rand } from '../core/math.js';
 import { P, disc, mk, opaqueBox } from '../core/pixels.js';
-import { CART, FIRE, HOUSES, LAMPS, TABLES } from '../world/layout.js';
+import { memorialLit } from '../art/props.js';
+import { CART, FIRE, HOUSES, LAMPS, MEMORIAL, MEMORIAL_LIGHT, TABLES } from '../world/layout.js';
 
 export const lightMethods = {
   _partyStrings() {
@@ -70,6 +71,7 @@ export const lightMethods = {
           P(ctx, lx - 2, ly - 37, 5, 5, '#ffe48a'); P(ctx, lx - 1, ly - 36, 1, 3, '#ffffff');
           this._glow(ctx, lx, ly - 34, 30, '255,190,90', 0.45);
         }
+        this._drawMemorialLight(ctx, dark);
       }
       if (dark && this._mode !== 'away') {
         const { x, y } = h.lantern;
@@ -77,6 +79,18 @@ export const lightMethods = {
         this._glow(ctx, x, y + 3, 16, '255,190,90', 0.42);
       }
     });
+  },
+
+  // The memorial statue, softly lit from the ground after dark: its cached warm copy laid over the tinted
+  // sprite at low strength, and a faint pool of light at its foot. One drawImage and one cached glow a frame.
+  _drawMemorialLight(ctx, dark) {
+    if (this._memFor !== this._props) { this._memFor = this._props; this._mem = this._props.find((pr) => pr.memorial) || null; }
+    const pr = this._mem;
+    if (!pr) return;
+    ctx.globalAlpha = 0.42 * dark;
+    ctx.drawImage(memorialLit(pr.cv), pr.x, pr.y);
+    ctx.globalAlpha = 1;
+    this._glow(ctx, MEMORIAL.x * S, MEMORIAL.y * S - 2, 16, '255,200,130', 0.16 * dark);
   },
 
   // Lights (windows, lanterns, lamps, café candles, party bulbs, event lights, the fire) are drawn after the
@@ -93,6 +107,7 @@ export const lightMethods = {
     });
     if (dark) {
       for (const [lx, ly] of LAMPS) push(lx - 3, ly - 38, 7, 7, ly / S, undefined);
+      push(...MEMORIAL_LIGHT, MEMORIAL.y, undefined); // anyone in front of the lit statue stays in front of it
       for (const [lx, ly] of AMPHI_LANTERNS) push(lx - 1, ly - 1, 3, 3, (ly + 17) / S, undefined);
       if (this._mode !== 'away') {
         TABLES.forEach(([tx, ty]) => push(tx - 3, ty - 15, 7, 7, (ty + 3) / S, undefined)); // candle flames

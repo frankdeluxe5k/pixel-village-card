@@ -330,6 +330,7 @@ export function* buildLandSteps(snow, look = 'summer') {
   });
   const mx = Math.round(MEMORIAL.x * S), my = Math.round(MEMORIAL.y * S);
   prop(mx - 22, my - 64, 44, 66, MEMORIAL.y, (pg) => drawMemorial(pg, mx, my, snow));
+  props[props.length - 1].memorial = true; // lit softly at night (see _drawMemorialLight)
   const hx = FARM.x0 - 9, hy = FARM.y0 + 13;
   prop(hx - 11, hy - 13, 22, 15, hy / S, (pg) => drawHaystack(pg, hx, hy, snow));
   prop(CART.x - 30, CART.by - 60, 60, 63, CART.by / S, (pg) => drawCoffeeCart(pg, snow));

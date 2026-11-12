@@ -208,3 +208,22 @@ export function drawMemorial(g, cx, by, snow) {
   g.drawImage(c, cx - ox, gy - oy + 1);
   if (snow) { P(g, cx - 16, by - 22, 33, 2, '#ffffff'); P(g, cx - 17, by - 5, 35, 1, '#ffffff'); }
 }
+
+// The statue as its ground light shows it at night: a warm copy of the prop sprite, brightest at the plinth and
+// fading toward the head. Built once per sprite (green and snowy land) and reused every frame.
+const memorialLitCache = new WeakMap();
+export function memorialLit(cv) {
+  let c = memorialLitCache.get(cv);
+  if (c) return c;
+  c = mk(cv.width, cv.height);
+  const g = c.getContext('2d');
+  g.drawImage(cv, 0, 0);
+  g.globalCompositeOperation = 'source-atop';
+  g.fillStyle = 'rgba(255,214,150,0.22)'; g.fillRect(0, 0, c.width, c.height);
+  g.globalCompositeOperation = 'destination-in';
+  const fade = g.createLinearGradient(0, c.height, 0, 0);
+  fade.addColorStop(0, 'rgba(0,0,0,1)'); fade.addColorStop(0.4, 'rgba(0,0,0,0.85)'); fade.addColorStop(1, 'rgba(0,0,0,0.3)');
+  g.fillStyle = fade; g.fillRect(0, 0, c.width, c.height);
+  memorialLitCache.set(cv, c);
+  return c;
+}

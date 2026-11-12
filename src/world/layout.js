@@ -62,6 +62,8 @@ export const FIRE = { x: 92, y: 112 };
 export const WELL = { x: 145, y: 73 };
 export const STUMP = { x: 55, y: 122 }; // the chopping block, with the woodpile stacked to its right (clear of the bench)
 export const MEMORIAL = { x: 67.67, y: 98 }; // the statue: a dog on a stone plinth, just right of the blue house
+// The statue's soft night light: its sprite box plus the pool of light at its foot [x, y, w, h] (render px).
+export const MEMORIAL_LIGHT = [Math.round(MEMORIAL.x * S) - 22, Math.round(MEMORIAL.y * S) - 64, 44, 80];
 export const MEMORIAL_VISIT = { x: 75.2, y: 99.1 }; // where a visitor stands to look up at it (facing left)
 // Village square furniture, in render pixels.
 export const POND = { x: 392, y: 352, rx: 20, ry: 8 };
