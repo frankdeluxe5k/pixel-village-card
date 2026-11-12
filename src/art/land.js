@@ -1,14 +1,14 @@
 // The ground layer and its depth-sorted props, built a few ms per frame.
 import { paintBackdrop } from './backdrop.js';
 import { SHRUBS, makeTree, shrubProp } from './foliage.js';
-import { drawBench, drawHaystack, drawLamp, drawWell, drawWoodpile } from './props.js';
+import { drawBench, drawHaystack, drawLamp, drawMemorial, drawWell, drawWoodpile } from './props.js';
 import { drawAmphitheater, drawBackFarm, drawBackFence, drawCoffeeCart, drawMenuBoard, drawPatio, drawScarecrow, drawStool } from './venues.js';
 import { byLook, hexToRgb } from '../core/color.js';
 import { HZ, RH, RW, S } from '../core/constants.js';
 import { mulberry32, pick, rand } from '../core/math.js';
 import { bayer, hash2, vnoise } from '../core/noise.js';
 import { P, ellipse, line, mk, outline, tpl } from '../core/pixels.js';
-import { AMPHI, BENCHES, CART, FARM, FIRE, HOUSES, LAMPS, PATHS, PATIO, POND, STOOLS, STUMP, TABLES, WELL } from '../world/layout.js';
+import { AMPHI, BENCHES, CART, FARM, FIRE, HOUSES, LAMPS, MEMORIAL, PATHS, PATIO, POND, STOOLS, STUMP, TABLES, WELL } from '../world/layout.js';
 import { lookOf } from '../core/time.js';
 
 // The whole land layer at once (tests, tools). The card builds it in steps across frames instead.
@@ -328,6 +328,8 @@ export function* buildLandSteps(snow, look = 'summer') {
     pr.shrub = i; // landscapers swap in a trimmed copy per card (see _staticItems)
     props.push(pr);
   });
+  const mx = Math.round(MEMORIAL.x * S), my = Math.round(MEMORIAL.y * S);
+  prop(mx - 22, my - 64, 44, 66, MEMORIAL.y, (pg) => drawMemorial(pg, mx, my, snow));
   const hx = FARM.x0 - 9, hy = FARM.y0 + 13;
   prop(hx - 11, hy - 13, 22, 15, hy / S, (pg) => drawHaystack(pg, hx, hy, snow));
   prop(CART.x - 30, CART.by - 60, 60, 63, CART.by / S, (pg) => drawCoffeeCart(pg, snow));

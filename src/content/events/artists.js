@@ -1,4 +1,4 @@
-// Event: artists carving a sculpture by the farm.
+// Event: artists carving a sculpture on the green between the tavern lane and the purple house.
 import { DAY_MOODS } from '../moods.js';
 import { ramp } from '../../core/color.js';
 import { pick, rand, towardX } from '../../core/math.js';
@@ -65,7 +65,7 @@ export function drawSculptureForm(g, variant, ax, top, rough) {
     P(g, ax + 13, top - 35, 1, 1, '#2a2a30');
   }
 }
-export const SCULPT_AT = { x: 70, y: 86.6 };
+export const SCULPT_AT = { x: 128, y: 85.5 };
 
 export const artists = {
   label: 'Visiting artists', icon: '🎨', text: 'Artists are making a sculpture',
@@ -88,16 +88,16 @@ export const artists = {
     if (ev.stage !== 'open') return null;
     if (ev.progress >= 0.9 || i === 2) {
       const ax = x + (i === 0 ? -8 : i === 1 ? 8 : pick([-9, 9]));
-      return { x: Math.max(60, ax), y: y + rand(2.6, 3.6), face: towardX(ax, x), action: 'admire', dur: rand(4, 7), onArrive: () => { if (Math.random() < 0.3) v.bubble = { g: 'heart', c: '#e04060', t: 1.2 }; } };
+      return { x: Math.min(136, ax), y: y + rand(2.6, 3.6), face: towardX(ax, x), action: 'admire', dur: rand(4, 7), onArrive: () => { if (Math.random() < 0.3) v.bubble = { g: 'heart', c: '#e04060', t: 1.2 }; } };
     }
     return { x: x + side[0], y: y + 0.4, face: side[1], action: i === 1 && ev.progress > 0.45 ? 'paint' : 'chisel', dur: rand(6, 12) };
   },
   visit(c, v, ev) {
     if (ev && ev.progress < 0.3) return null;
     const ax = SCULPT_AT.x + (Math.random() < 0.5 ? rand(-10, -5) : rand(5, 10));
-    return { x: Math.max(60, ax), y: SCULPT_AT.y + rand(4.2, 6.4), face: towardX(ax, SCULPT_AT.x), action: 'admire', dur: rand(4, 8), onArrive: () => { if (Math.random() < 0.4) v.bubble = { g: 'heart', c: '#e04060', t: 1.2 }; } };
+    return { x: Math.min(136, ax), y: SCULPT_AT.y + rand(4.2, 6.4), face: towardX(ax, SCULPT_AT.x), action: 'admire', dur: rand(4, 8), onArrive: () => { if (Math.random() < 0.4) v.bubble = { g: 'heart', c: '#e04060', t: 1.2 }; } };
   },
-  blocks: (c, ev) => (!ev || ev.stage !== 'arrive' || ev.crew.some((v) => v.ready) ? [[SCULPT_AT.x - 4.2, 84.2, SCULPT_AT.x + 4.2, 86.9]] : []),
+  blocks: (c, ev) => (!ev || ev.stage !== 'arrive' || ev.crew.some((v) => v.ready) ? [[SCULPT_AT.x - 4.2, SCULPT_AT.y - 2.4, SCULPT_AT.x + 4.2, SCULPT_AT.y + 0.3]] : []),
   props(c, ev, add) {
     const st = !ev ? 4 : ev.stage === 'arrive' ? 0 : ev.progress < 0.12 ? 0 : ev.progress < 0.4 ? 1 : ev.progress < 0.9 ? 2 : 3;
     if (ev && ev.stage === 'arrive' && !ev.crew.some((v) => v.ready)) return;

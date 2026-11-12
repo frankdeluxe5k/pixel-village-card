@@ -1,7 +1,7 @@
 // Card: what each villager does next.
 import { H, HORIZON, S, W } from '../core/constants.js';
 import { mulberry32, pick, pickWeighted, rand, towardX } from '../core/math.js';
-import { AMPHI_SEATS, BARISTA, CAFE_SEATS, ENTRANCE, FIRE, HOUSES, LEAF_SPOTS, SNOWMAN_AT, STAGE_SPOT, STUMP, WELL, farmSpot } from '../world/layout.js';
+import { AMPHI_SEATS, BARISTA, CAFE_SEATS, ENTRANCE, FIRE, HOUSES, LEAF_SPOTS, MEMORIAL_VISIT, SNOWMAN_AT, STAGE_SPOT, STUMP, WELL, farmSpot } from '../world/layout.js';
 import { NAV, blocked, clearPath, freeSpot, route } from '../world/nav.js';
 import { SHRUBS } from '../art/foliage.js';
 
@@ -280,7 +280,10 @@ export const planMethods = {
       if (dog) return this._fetchPlan(v, dog);
     }
     if (r < 0.9) return chat();
-    return { ...wander(), action: 'idle', dur: rand(4, 8) };
+    if (r < 0.95 || this._t - (v.memorialAt ?? -1e9) < 90) return { ...wander(), action: 'idle', dur: rand(4, 8) };
+    // now and then he stops at the statue beside the blue house and stands looking up at it for a while
+    v.memorialAt = this._t;
+    return { x: MEMORIAL_VISIT.x, y: MEMORIAL_VISIT.y, face: -1, action: 'reflect', dur: rand(8, 14) };
   },
 
   _elderPlan(v, { chat, seat }) {

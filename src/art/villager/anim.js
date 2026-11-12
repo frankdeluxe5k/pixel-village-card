@@ -3,6 +3,7 @@
 // Keyframes: [frontHand, backHand] offsets from the shoulders, plus optional upper-body bob.
 export const KEYS = {
   idle: [{ f: [1, 6], b: [-1, 6] }, { f: [1, 5], b: [-1, 5], bob: -1 }],
+  reflect: [{ f: [3, 6], b: [2, 6] }, { f: [3, 6], b: [2, 6], bob: -1 }], // standing still, hands clasped in front
   sit: [{ f: [3, 3], b: [2, 4] }, { f: [3, 2], b: [2, 3], bob: -1 }],
   // hoe / axe / hammer: wind-up, swing, strike, follow-through (dir = tool shaft direction)
   swing: [
@@ -105,6 +106,7 @@ KEYS.band_bass_rock = KEYS.band_bass.map((k) => ({ ...k, bob: k.bob ? 2 : -1 }))
 // pose -> [keyframe set, frames per second, playback order]
 export const ANIM = {
   idle: ['idle', 1.4, [0, 0, 0, 1, 1, 0]],
+  reflect: ['reflect', 0.6, [0, 0, 0, 1, 1, 1]],
   sit: ['sit', 1, [0, 0, 0, 1, 1, 0]],
   walk: [null, 10, [0, 1, 2, 3, 4, 5]],
   farm: ['swing', 6, [0, 1, 2, 3]], chop: ['swing', 7, [0, 1, 2, 3]], sign: ['swing', 8, [0, 1, 2, 3]],
@@ -172,7 +174,7 @@ export const ACTION_POSE = {
   build: 'setup', sell: 'chat', pitch: 'chat', browse: 'idle', admire: 'idle', chisel: 'sign', cheer: 'dance', hitch: 'setup',
   knock: 'knock', shrug: 'shrug', paint: 'paint', trim: 'trim', prune: 'prune', crank: 'crank', toss: 'toss', announce: 'announce', juggle: 'juggle',
   rake: 'rake', shovel: 'shovel', yoyo: 'yoyo', bounce: 'bounce', spintop: 'spintop', playfetch: 'throwball', tag: 'kidplay',
-  catch: 'catchready', knit: 'knit', mend: 'sign', feed: 'sow', tend: 'water', sow: 'sow', throw: 'throw', harvest: 'harvest', snowman: 'pat', leap: 'kidplay',
+  catch: 'catchready', knit: 'knit', mend: 'sign', feed: 'sow', tend: 'water', sow: 'sow', throw: 'throw', harvest: 'harvest', snowman: 'pat', leap: 'kidplay', reflect: 'reflect',
 };
 // Tools held for a pose (by frame where it matters).
 export const POSE_TOOL = {

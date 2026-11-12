@@ -60,10 +60,12 @@ export const ENTRANCE = PATHS[0].pts[0];
 
 export const FIRE = { x: 92, y: 112 };
 export const WELL = { x: 145, y: 73 };
-export const STUMP = { x: 55, y: 122 }; // the chopping block, with the woodpile stacked to its right (clear of the bench)
+export const STUMP = { x: 55, y: 122 };
+export const MEMORIAL = { x: 67.67, y: 90.67 }; // the statue: a dog on a stone plinth, just right of the blue house
+export const MEMORIAL_VISIT = { x: 75.2, y: 91.8 }; // where a visitor stands to look up at it (facing left) // the chopping block, with the woodpile stacked to its right (clear of the bench)
 // Village square furniture, in render pixels.
 export const POND = { x: 392, y: 352, rx: 20, ry: 8 };
-export const LAMPS = [[FIRE.x * S - 58, FIRE.y * S - 34], [FIRE.x * S + 64, FIRE.y * S - 37]];
+export const LAMPS = [[FIRE.x * S - 36, FIRE.y * S - 34], [FIRE.x * S + 64, FIRE.y * S - 37]];
 // Benches around the fire: [left x, ground line y, width].
 export const BENCHES = [[FIRE.x * S - 18, FIRE.y * S - 20, 36], [FIRE.x * S - 70, FIRE.y * S + 21, 20], [FIRE.x * S + 50, FIRE.y * S + 23, 20]];
 
@@ -113,5 +115,5 @@ export const AWAY_READ = { x: 29, y: 115.2 };
 export const BAND_SPOTS = [{ x: 94.5, y: 84.5, face: 1 }, { x: 86, y: 88.5, face: 1 }, { x: 102, y: 88.5, face: -1 }, { x: 109, y: 88, face: -1 }];
 
 // Seasonal yard spots (sim units), on open grass off the paths: leaf piles in fall, the kids' snowman.
-export const LEAF_SPOTS = [[76, 96], [68, 90], [132, 95], [172, 93]];
+export const LEAF_SPOTS = [[76, 96], [58, 100], [132, 95], [172, 93]];
 export const SNOWMAN_AT = { x: 122, y: 88 };

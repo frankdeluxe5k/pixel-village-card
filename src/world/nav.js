@@ -1,11 +1,12 @@
 // Walking: footprints, the path graph, event blocks and route finding.
 import { HORIZON, S, W } from '../core/constants.js';
-import { BENCHES, FIRE, HOUSES, PATHS, WELL } from './layout.js';
+import { BENCHES, FIRE, HOUSES, MEMORIAL, PATHS, WELL } from './layout.js';
 
 // Ground footprints villagers shouldn't walk through, and a path network along the road.
 export const FOOTPRINTS = [
   ...HOUSES.map((h) => [h.x - 1, h.base - 8, h.x + h.w + 1, h.base + 0.5]),
   [WELL.x - 6, WELL.y - 5, WELL.x + 6, WELL.y + 0.5],
+  [MEMORIAL.x - 6, MEMORIAL.y - 2.3, MEMORIAL.x + 5.9, MEMORIAL.y + 0.5], // the statue's plinth
   [FIRE.x - 7, FIRE.y - 2, FIRE.x + 7, FIRE.y + 4], // the stone ring of the fire pit (the cook stands at its west edge)
   ...BENCHES.map(([x, by, w]) => [x / S - 0.7, by / S - 1.5, (x + w) / S + 0.7, by / S + 0.6]),
 ];

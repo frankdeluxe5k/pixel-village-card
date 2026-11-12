@@ -173,6 +173,10 @@ things, plus a few one-time setup statements on its own data (house geometry, pa
   (two hub nodes in `NAV`, and square links that would cross a footprint are dropped).
 - Farm at the back centre (drawn smaller to read as distance), scarecrow, small haystack at its left end;
   well behind and right of the tavern.
+- Memorial statue just right of the blue house (`MEMORIAL`, art `drawMemorial` in `art/props.js`, a footprint
+  in `FOOTPRINTS`): a bronze German Shepherd sitting tall on a granite plinth, with a bronze ball cast at its
+  forepaws (part of the statue; it never moves). The handyman stops there now and then (`MEMORIAL_VISIT`, the
+  quiet `reflect` pose, at most once every 90 s). Keep that spot clear of events, leaf piles and lamps.
 - Café at the front right: brick patio, four umbrella tables with stools, coffee cart (cook is barista).
 - Amphitheater at the front left: low turf terraces with fieldstone faces and log benches, painted onto
   the ground (no outline); a small rustic screen panel turned ~45° toward the seats, partly off the left
@@ -211,7 +215,7 @@ things, plus a few one-time setup statements on its own data (house geometry, pa
   walking sticks, last one out pulls down the amphitheater screen with a "BACK SOON!" card on it,
   `_sign === 2`; the rigger raises it when they're back). In cozy, visitors go into the tavern (gone at its door).
 - Events: merchant (led in from the west lane with a mule pulling his cart, parked east of the pond with the mule
-  hitched on the east side, away from the pond), salesman (doors), artists (sculpture by the farm, on show
+  hitched on the east side, away from the pond), salesman (doors), artists (sculpture on the green between the tavern lane and the purple house, on show
   until bedtime), landscapers (trim shrubs into tidy domes for the day, prune trees from a ladder), fair (tent,
   carousel, ring toss east of the pond, into the evening with lights). About one a day by default.
 - People: 9 residents by default (`DEFAULT_VILLAGERS` in `content/jobs.js`: farmer, cook, woodcutter, water

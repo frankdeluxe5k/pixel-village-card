@@ -1,7 +1,7 @@
-// Small props: benches, lamps, barrels, the well, the woodpile, the projector, the pot.
+// Small props: benches, lamps, barrels, the well, the woodpile, the projector, the pot, the memorial statue.
 import { ramp } from '../core/color.js';
 import { S } from '../core/constants.js';
-import { P, disc, ellipse, line, mk, outline } from '../core/pixels.js';
+import { P, disc, ellipse, fillPoly, line, mk, outline } from '../core/pixels.js';
 import { STUMP, WELL } from '../world/layout.js';
 
 export function drawBench(g, x, by, w, snow) {
@@ -134,4 +134,69 @@ export function makePuff(r, light, mid, dark) {
   disc(g, o - 1, o - 1, Math.max(0, r - 1), mid);
   if (r > 1) disc(g, o - Math.ceil(r / 2), o - Math.ceil(r / 2), Math.max(0, r - 3), light);
   return c;
+}
+
+// The memorial: a bronze German Shepherd sitting tall on a granite plinth, looking out over the village, with
+// a bronze ball cast at its forepaws (part of the statue; it never moves). cx/by in render px, by = ground line.
+export function drawMemorial(g, cx, by, snow) {
+  const st = ramp('#8e8a98'), br = ramp('#7a5634'), gold = ramp('#c09048'), pat = '#4e7a6a';
+  // plinth: a footing step, the block, and a moulded cap (lit from the left)
+  const block = (x0, y0, w, h) => {
+    for (let x = x0; x < x0 + w; x++) {
+      const u = (x - x0) / (w - 1);
+      P(g, x, y0, 1, h, u < 0.12 ? st.l : u > 0.82 ? st.d : st.m);
+    }
+    P(g, x0, y0, w, 1, st.h);
+  };
+  block(cx - 17, by - 4, 35, 4); P(g, cx - 17, by - 1, 35, 1, st.d);
+  block(cx - 14, by - 18, 29, 14); P(g, cx - 14, by - 5, 29, 1, st.o);
+  block(cx - 16, by - 21, 33, 3); P(g, cx - 16, by - 18, 33, 1, st.o);
+  for (const [x, y] of [[cx - 11, by - 15], [cx + 9, by - 11], [cx - 4, by - 7], [cx + 11, by - 16]]) P(g, x, y, 2, 1, st.d); // a little grain
+  // a bronze plaque on the front
+  P(g, cx - 6, by - 15, 13, 7, br.o); P(g, cx - 5, by - 14, 11, 5, br.m); P(g, cx - 5, by - 14, 11, 1, br.l);
+  for (const [x, w] of [[cx - 3, 7], [cx - 2, 5]]) P(g, x, by - 12 + (w === 5 ? 2 : 0), w, 1, br.d);
+
+  // the dog, facing right: drawn as one silhouette, then shaded like cast metal
+  const gy = by - 22, c = mk(40, 44), d = c.getContext('2d'), ox = 20, oy = 42; // local origin = (cx, gy)
+  const Q = (pts) => fillPoly(d, pts.map(([x, y]) => [ox + x, oy + y]), '#000');
+  const E = (x, y, rx, ry) => ellipse(d, ox + x, oy + y, rx, ry, '#000');
+  const R = (x, y, w, h) => P(d, ox + x, oy + y, w, h, '#000');
+  E(-5, -6, 7, 6);                                                   // haunch
+  Q([[-11, 0], [-11, -7], [-8, -13], [-3, -17], [2, -21], [6, -21], [9, -14], [9, 0]]); // back and body
+  E(5, -15, 4, 6);                                                   // deep chest
+  Q([[0, -21], [2, -28], [9, -31], [11, -24], [10, -16], [5, -15]]); // a thick neck, held high
+  E(6, -30, 5, 4);                                                   // skull
+  Q([[9, -33], [15, -30], [16, -28], [15, -26], [9, -25]]);          // long muzzle
+  Q([[2, -32], [4, -41], [7, -33]]); Q([[6, -33], [8, -40], [10, -32]]); // tall pricked ears
+  R(5, -13, 3, 13); R(2, -10, 3, 10);                                 // forelegs, straight
+  R(2, -2, 9, 2);                                                    // forepaws
+  R(-5, -3, 8, 3);                                                   // hind paw tucked forward
+  Q([[-10, -5], [-14, -3], [-17, 0], [-10, 0], [-8, -3]]);           // bushy tail curled round on the plinth
+  const im = d.getImageData(0, 0, 40, 44), a = (x, y) => (x < 0 || y < 0 || x >= 40 || y >= 44 ? 0 : im.data[(y * 40 + x) * 4 + 3]);
+  d.clearRect(0, 0, 40, 44);
+  for (let y = 0; y < 44; y++) for (let x = 0; x < 40; x++) {
+    if (!a(x, y)) continue;
+    const lit = !a(x - 1, y) || !a(x, y - 1), shade = !a(x + 1, y) || !a(x, y + 1) || !a(x + 1, y + 1);
+    let col = lit && !shade ? br.l : shade && !lit ? br.d : br.m;
+    if (!a(x, y - 1) && !a(x - 1, y - 1)) col = br.h; // top edges catch the light
+    P(d, x, y, 1, 1, col);
+  }
+  const D = (x, y, w, h, col) => P(d, ox + x, oy + y, w, h, col);
+  // modelling: haunch curve, the far foreleg in shadow, the chest line, ears, eye, nose and collar
+  for (const [x, y] of [[-9, -9], [-8, -11], [-6, -12], [-4, -12], [-2, -11], [-1, -9], [0, -7], [0, -5]]) D(x, y, 1, 1, br.d);
+  D(2, -10, 1, 9, br.d); D(4, -10, 1, 9, br.o); D(7, -12, 1, 10, br.d); D(5, -13, 1, 11, br.l);
+  D(3, -2, 1, 2, br.o); D(6, -2, 1, 2, br.o); D(9, -1, 1, 1, br.o);
+  D(4, -38, 1, 5, br.d); D(8, -37, 1, 4, br.d);
+  D(9, -30, 1, 1, br.o); D(9, -31, 3, 1, br.d); D(10, -30, 1, 1, br.h); // eye under a strong brow
+  D(15, -30, 2, 2, br.o); D(15, -30, 1, 1, br.h);                    // nose, rubbed bright
+  D(10, -27, 5, 1, br.d);                                            // mouth line
+  for (let k = 0; k < 6; k++) D(2 + k, -23 + (k >> 1), 1, 1, k % 2 ? br.o : br.d); // collar
+  D(5, -21, 1, 2, br.h);                                             // its tag
+  // verdigris in the hollows
+  for (const [x, y] of [[-10, -1], [-7, -2], [-1, -1], [1, -4], [4, -5], [-12, -1], [8, -6], [3, -17]]) D(x, y, 1, 1, pat);
+  // the ball, cast with the statue, sitting on the plinth at the forepaws (polished from being touched)
+  disc(d, ox + 14, oy - 3, 3, gold.d); disc(d, ox + 13, oy - 4, 2, gold.m); D(12, -5, 2, 1, gold.l); D(12, -5, 1, 1, gold.h); D(15, -1, 2, 1, br.o);
+  if (snow) for (let x = 0; x < 40; x++) for (let y = 0; y < 44; y++) if (a(x, y)) { P(d, x, y, 1, 1, '#f4f8ff'); if (a(x, y + 1) && x % 3) P(d, x, y + 1, 1, 1, '#ffffff'); break; }
+  g.drawImage(c, cx - ox, gy - oy + 1);
+  if (snow) { P(g, cx - 16, by - 22, 33, 2, '#ffffff'); P(g, cx - 17, by - 5, 35, 1, '#ffffff'); }
 }

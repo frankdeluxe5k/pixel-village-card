@@ -155,7 +155,7 @@ Villagers and visitors wander over to watch, and each crew leaves the village as
 |---|---|---|
 | 🛒 Travelling merchant | `event:merchant` | Leads his mule and cart in along the west lane, unrolls the canopy and sets out fruit, jars and cloth while the mule grazes; people browse and buy |
 | 💼 Door-to-door salesman | `event:salesman` | Bowler hat and sample case; knocks on doors (someone home might buy, an empty house gets a shrug) and pitches to people in the street |
-| 🎨 Visiting artists | `event:artists` | Three artists chisel and paint a sculpture by the farm, then unveil it; it stays on show until bedtime |
+| 🎨 Visiting artists | `event:artists` | Three artists chisel and paint a sculpture on the green by the tavern lane, then unveil it; it stays on show until bedtime |
 | ✂️ Landscapers | `event:landscapers` | Trim every shrub into a tidy dome, prune trees from a ladder and wheel the clippings away; the trims last the day |
 | 🎠 Travelling fair | `event:fair` | A striped tent, a hand-cranked carousel kids love and a ring toss; more visitors come, and it runs into the evening with lights |
 
