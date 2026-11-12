@@ -136,10 +136,10 @@ export function makePuff(r, light, mid, dark) {
   return c;
 }
 
-// The memorial: a bronze German Shepherd sitting tall on a granite plinth, looking out over the village, with
-// a bronze ball cast at its forepaws (part of the statue; it never moves). cx/by in render px, by = ground line.
+// The memorial: a painted German Shepherd (cream with a black saddle and mask) sitting tall on a granite plinth,
+// looking out over the village, with a bronze ball cast at its forepaws (part of the statue; it never moves). cx/by in render px, by = ground line.
 export function drawMemorial(g, cx, by, snow) {
-  const st = ramp('#8e8a98'), br = ramp('#7a5634'), gold = ramp('#c09048'), pat = '#4e7a6a';
+  const st = ramp('#8e8a98'), br = ramp('#7a5634'), gold = ramp('#c09048');
   // plinth: a footing step, the block, and a moulded cap (lit from the left)
   const block = (x0, y0, w, h) => {
     for (let x = x0; x < x0 + w; x++) {
@@ -156,7 +156,7 @@ export function drawMemorial(g, cx, by, snow) {
   P(g, cx - 6, by - 15, 13, 7, br.o); P(g, cx - 5, by - 14, 11, 5, br.m); P(g, cx - 5, by - 14, 11, 1, br.l);
   for (const [x, w] of [[cx - 3, 7], [cx - 2, 5]]) P(g, x, by - 12 + (w === 5 ? 2 : 0), w, 1, br.d);
 
-  // the dog, facing right: drawn as one silhouette, then shaded like cast metal
+  // the dog, facing right: drawn as one silhouette, then painted and shaded
   const gy = by - 22, c = mk(40, 44), d = c.getContext('2d'), ox = 20, oy = 42; // local origin = (cx, gy)
   const Q = (pts) => fillPoly(d, pts.map(([x, y]) => [ox + x, oy + y]), '#000');
   const E = (x, y, rx, ry) => ellipse(d, ox + x, oy + y, rx, ry, '#000');
@@ -174,28 +174,36 @@ export function drawMemorial(g, cx, by, snow) {
   Q([[-10, -5], [-14, -3], [-17, 0], [-10, 0], [-8, -3]]);           // bushy tail curled round on the plinth
   const im = d.getImageData(0, 0, 40, 44), a = (x, y) => (x < 0 || y < 0 || x >= 40 || y >= 44 ? 0 : im.data[(y * 40 + x) * 4 + 3]);
   d.clearRect(0, 0, 40, 44);
+  // painted in the dog's own colours: a cream coat, a black saddle down the back and tail, a black mask and ears
+  const cream = { h: '#fffaea', l: '#f6ecd2', m: '#e6d4ac', d: '#c4a87c', o: '#9a7c54' };
+  const black = { h: '#7c7a88', l: '#55535e', m: '#34313a', d: '#24212a', o: '#141218' };
+  const isBlack = (x, y) => y <= -33 // ears
+    || (x >= 10 && y <= -24) || (x >= 5 && y <= -29) // the black face: muzzle, forehead and round the eye
+    || (x <= 4 && y <= -20 && y >= -32 && x <= 3 + (y + 29) * 0.25) // up the back of the neck to the ears
+    || (x <= 6 && y >= -21 && y < -1 - (x + 11) * 0.75) // a broad saddle over the back and down the shoulder
+    || (x <= -9 && y <= -1); // the tail
+  const coat = (lx, ly) => (isBlack(lx, ly) ? black : cream);
   for (let y = 0; y < 44; y++) for (let x = 0; x < 40; x++) {
     if (!a(x, y)) continue;
-    const lit = !a(x - 1, y) || !a(x, y - 1), shade = !a(x + 1, y) || !a(x, y + 1) || !a(x + 1, y + 1);
-    let col = lit && !shade ? br.l : shade && !lit ? br.d : br.m;
-    if (!a(x, y - 1) && !a(x - 1, y - 1)) col = br.h; // top edges catch the light
+    const k = coat(x - ox, y - oy), lit = !a(x - 1, y) || !a(x, y - 1), shade = !a(x + 1, y) || !a(x, y + 1) || !a(x + 1, y + 1);
+    let col = lit && !shade ? k.l : shade && !lit ? k.d : k.m;
+    if (!a(x, y - 1)) col = k === black ? k.h : (!a(x - 1, y - 1) ? k.h : k.l); // a pale rim along the top keeps the black edge clear of the farm behind
     P(d, x, y, 1, 1, col);
   }
   const D = (x, y, w, h, col) => P(d, ox + x, oy + y, w, h, col);
-  // modelling: haunch curve, the far foreleg in shadow, the chest line, ears, eye, nose and collar
-  for (const [x, y] of [[-9, -9], [-8, -11], [-6, -12], [-4, -12], [-2, -11], [-1, -9], [0, -7], [0, -5]]) D(x, y, 1, 1, br.d);
-  D(2, -10, 1, 9, br.d); D(4, -10, 1, 9, br.o); D(7, -12, 1, 10, br.d); D(5, -13, 1, 11, br.l);
-  D(3, -2, 1, 2, br.o); D(6, -2, 1, 2, br.o); D(9, -1, 1, 1, br.o);
-  D(4, -38, 1, 5, br.d); D(8, -37, 1, 4, br.d);
-  D(9, -30, 1, 1, br.o); D(9, -31, 3, 1, br.d); D(10, -30, 1, 1, br.h); // eye under a strong brow
-  D(15, -30, 2, 2, br.o); D(15, -30, 1, 1, br.h);                    // nose, rubbed bright
-  D(10, -27, 5, 1, br.d);                                            // mouth line
-  for (let k = 0; k < 6; k++) D(2 + k, -23 + (k >> 1), 1, 1, k % 2 ? br.o : br.d); // collar
-  D(5, -21, 1, 2, br.h);                                             // its tag
-  // verdigris in the hollows
-  for (const [x, y] of [[-10, -1], [-7, -2], [-1, -1], [1, -4], [4, -5], [-12, -1], [8, -6], [3, -17]]) D(x, y, 1, 1, pat);
-  // the ball, cast with the statue, sitting on the plinth at the forepaws (polished from being touched)
-  disc(d, ox + 14, oy - 3, 3, gold.d); disc(d, ox + 13, oy - 4, 2, gold.m); D(12, -5, 2, 1, gold.l); D(12, -5, 1, 1, gold.h); D(15, -1, 2, 1, br.o);
+  const Dk = (x, y, w, h, tone) => { for (let i = 0; i < w; i++) for (let j = 0; j < h; j++) D(x + i, y + j, 1, 1, coat(x + i, y + j)[tone]); };
+  // modelling: haunch curve, the far foreleg in shadow, the chest line, ears, eye, nose and mouth
+  for (const [x, y] of [[-9, -9], [-8, -11], [-6, -12], [-4, -12], [-2, -11], [-1, -9], [0, -7], [0, -5]]) Dk(x, y, 1, 1, 'd');
+  Dk(2, -10, 1, 9, 'd'); Dk(4, -10, 1, 9, 'o'); Dk(7, -12, 1, 10, 'd'); Dk(5, -13, 1, 11, 'l');
+  Dk(3, -2, 1, 2, 'o'); Dk(6, -2, 1, 2, 'o'); Dk(9, -1, 1, 1, 'o');
+  D(4, -38, 1, 5, '#8a6a5a'); D(8, -37, 1, 4, '#8a6a5a');           // inner ears
+  D(9, -31, 3, 1, black.o); D(9, -30, 2, 1, '#b07a30'); D(9, -30, 1, 1, '#f0c060'); // a warm eye under the brow
+  D(15, -30, 2, 2, black.o); D(15, -30, 1, 1, black.h);              // nose
+  D(10, -27, 5, 1, black.o);                                         // mouth line
+  // the ball, cast with the statue, sitting on the plinth at the forepaws
+  disc(d, ox + 14, oy - 3, 3, gold.d); disc(d, ox + 13, oy - 4, 2, gold.m); D(12, -5, 2, 1, gold.l); D(12, -5, 1, 1, gold.h); D(15, -1, 2, 1, gold.o);
+  // a dark contact line where the dog and the ball meet the cap, so the cream paws read against the stone
+  for (let x = 0; x < 40; x++) if (a(x, oy) || (x >= ox + 11 && x <= ox + 17)) D(x - ox, 1, 1, 1, black.o);
   if (snow) for (let x = 0; x < 40; x++) for (let y = 0; y < 44; y++) if (a(x, y)) { P(d, x, y, 1, 1, '#f4f8ff'); if (a(x, y + 1) && x % 3) P(d, x, y + 1, 1, 1, '#ffffff'); break; }
   g.drawImage(c, cx - ox, gy - oy + 1);
   if (snow) { P(g, cx - 16, by - 22, 33, 2, '#ffffff'); P(g, cx - 17, by - 5, 35, 1, '#ffffff'); }

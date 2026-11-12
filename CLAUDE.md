@@ -174,7 +174,8 @@ things, plus a few one-time setup statements on its own data (house geometry, pa
 - Farm at the back centre (drawn smaller to read as distance), scarecrow, small haystack at its left end;
   well behind and right of the tavern.
 - Memorial statue just right of the blue house (`MEMORIAL`, art `drawMemorial` in `art/props.js`, a footprint
-  in `FOOTPRINTS`): a bronze German Shepherd sitting tall on a granite plinth, with a bronze ball cast at its
+  in `FOOTPRINTS`): a German Shepherd painted in true colours (cream coat, black saddle and tail, black face and
+  ears, pale rims on the black so it stays crisp against the farm) sitting tall on a granite plinth, with a bronze ball cast at its
   forepaws (part of the statue; it never moves). The handyman stops there now and then (`MEMORIAL_VISIT`, the
   quiet `reflect` pose, at most once every 90 s). Keep that spot clear of events, leaf piles and lamps.
 - Café at the front right: brick patio, four umbrella tables with stools, coffee cart (cook is barista).
